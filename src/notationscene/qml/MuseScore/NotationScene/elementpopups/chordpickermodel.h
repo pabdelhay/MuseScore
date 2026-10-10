@@ -41,9 +41,10 @@ class ChordPickerModel : public AbstractElementPopupModel
     QML_ELEMENT
 
     Q_PROPERTY(QStringList roots READ roots CONSTANT)
-    Q_PROPERTY(QVariantList qualities READ qualities CONSTANT)
+    Q_PROPERTY(QVariantList qualityRows READ qualityRows CONSTANT)
     Q_PROPERTY(QString root READ root NOTIFY rootChanged)
     Q_PROPERTY(QString quality READ quality NOTIFY qualityChanged)
+    Q_PROPERTY(QString qualityLabel READ qualityLabel NOTIFY qualityLabelChanged)
     Q_PROPERTY(QString bass READ bass NOTIFY bassChanged)
     Q_PROPERTY(QString preview READ preview NOTIFY previewChanged)
     Q_PROPERTY(bool hasCustomSymbol READ hasCustomSymbol NOTIFY hasCustomSymbolChanged)
@@ -53,15 +54,17 @@ public:
     ~ChordPickerModel() override;
 
     QStringList roots() const;
-    QVariantList qualities() const;
+    QVariantList qualityRows() const;
 
     QString root() const;
     QString quality() const;
+    QString qualityLabel() const;
     QString bass() const;
     QString preview() const;
     bool hasCustomSymbol() const;
 
     Q_INVOKABLE void init() override;
+    Q_INVOKABLE void stepRoot(int direction);
     Q_INVOKABLE void setRoot(const QString& root);
     Q_INVOKABLE void setQuality(const QString& quality);
     Q_INVOKABLE void setBass(const QString& bass);
@@ -72,6 +75,7 @@ public:
 signals:
     void rootChanged();
     void qualityChanged();
+    void qualityLabelChanged();
     void bassChanged();
     void previewChanged();
     void hasCustomSymbolChanged();
@@ -91,7 +95,7 @@ private:
 
     static ChordPickerModel* s_active;
 
-    QVariantList m_qualities;
+    QVariantList m_qualityRows;
     QString m_root = QStringLiteral("C");
     QString m_quality;
     QString m_bass;

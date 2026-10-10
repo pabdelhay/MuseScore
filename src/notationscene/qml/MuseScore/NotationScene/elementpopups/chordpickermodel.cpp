@@ -70,31 +70,79 @@ const QStringList ROOTS = {
 struct QualityDef {
     const char* suffix;
     const char* label;
+    int row;
 };
 
+// Rows: 0 major, 1 minor, 2 suspended, 3 diminished and augmented.
 const QualityDef QUALITIES[] = {
-    { "",      "maj" },
-    { "m",     "m" },
-    { "dim",   "dim" },
-    { "aug",   "aug" },
-    { "sus2",  "sus2" },
-    { "sus4",  "sus4" },
-    { "7",     "7" },
-    { "maj7",  "maj7" },
-    { "m7",    "m7" },
-    { "m7b5",  "m7♭5" },
-    { "dim7",  "dim7" },
-    { "mMaj7", "mMaj7" },
-    { "6",     "6" },
-    { "m6",    "m6" },
-    { "9",     "9" },
-    { "maj9",  "maj9" },
-    { "m9",    "m9" },
-    { "add9",  "add9" },
-    { "7sus4", "7sus4" },
-    { "11",    "11" },
-    { "13",    "13" },
+    { "",      "maj",     0 },
+    { "6",     "6",       0 },
+    { "69",    "69",      0 },
+    { "maj7",  "maj7",    0 },
+    { "7",     "7",       0 },
+    { "9",     "9",       0 },
+    { "maj9",  "maj9",    0 },
+    { "add9",  "add9",    0 },
+    { "13",    "13",      0 },
+
+    { "m",     "m",       1 },
+    { "m6",    "m6",      1 },
+    { "m7",    "m7",      1 },
+    { "m7b9",  "m7(b9)",  1 },
+    { "m9",    "m9",      1 },
+    { "m11",   "m11",     1 },
+    { "mMaj7", "mMaj7",   1 },
+    { "m69",   "m69",     1 },
+
+    { "sus2",  "sus2",    2 },
+    { "sus4",  "sus4",    2 },
+    { "7sus4", "7sus4",   2 },
+    { "9sus",  "9sus",    2 },
+
+    { "dim",   "dim",     3 },
+    { "dim7",  "dim7",    3 },
+    { "m7b5",  "m7♭5",    3 },
+    { "aug",   "aug",     3 },
+    { "aug7",  "aug7",    3 },
 };
+
+// Up a half step is always spelled with sharps. Down a half step is always spelled with flats.
+const char* const SHARP_ROOTS[] = {
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+};
+const char* const FLAT_ROOTS[] = {
+    "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"
+};
+
+int pitchClassForRoot(const QString& name)
+{
+    if (name.isEmpty()) {
+        return -1;
+    }
+
+    int pc = -1;
+    switch (name.at(0).toUpper().unicode()) {
+    case u'C': pc = 0; break;
+    case u'D': pc = 2; break;
+    case u'E': pc = 4; break;
+    case u'F': pc = 5; break;
+    case u'G': pc = 7; break;
+    case u'A': pc = 9; break;
+    case u'B': pc = 11; break;
+    default: return -1;
+    }
+
+    if (name.size() > 1) {
+        const QChar accidental = name.at(1);
+        if (accidental == u'#' || accidental == QChar(0x266F)) {
+            ++pc;
+        } else if (accidental == u'b' || accidental == QChar(0x266D)) {
+            --pc;
+        }
+    }
+
+    return (pc % 12 + 12) % 12;
+}
 
 QString normalizeAccidentals(QString text)
 {
@@ -107,11 +155,15 @@ QString normalizeAccidentals(QString text)
 ChordPickerModel::ChordPickerModel(QObject* parent)
     : AbstractElementPopupModel(PopupModelType::TYPE_HARMONY, parent)
 {
+    QVariantList rows[4];
     for (const QualityDef& quality : QUALITIES) {
-        m_qualities.append(QVariantMap {
+        rows[quality.row].append(QVariantMap {
             { QStringLiteral("suffix"), QString::fromLatin1(quality.suffix) },
-            { QStringLiteral("label"), QString::fromLatin1(quality.label) },
+            { QStringLiteral("label"), QString::fromUtf8(quality.label) },
         });
+    }
+    for (const QVariantList& row : rows) {
+        m_qualityRows.append(QVariant(row));
     }
 
     connect(this, &AbstractElementPopupModel::dataChanged, this, [this]() {
@@ -126,9 +178,9 @@ QStringList ChordPickerModel::roots() const
     return ROOTS;
 }
 
-QVariantList ChordPickerModel::qualities() const
+QVariantList ChordPickerModel::qualityRows() const
 {
-    return m_qualities;
+    return m_qualityRows;
 }
 
 QString ChordPickerModel::root() const
@@ -139,6 +191,21 @@ QString ChordPickerModel::root() const
 QString ChordPickerModel::quality() const
 {
     return m_quality;
+}
+
+QString ChordPickerModel::qualityLabel() const
+{
+    if (!m_customSymbol.isEmpty()) {
+        return m_customSymbol;
+    }
+
+    for (const QualityDef& quality : QUALITIES) {
+        if (m_quality == QLatin1String(quality.suffix)) {
+            return QString::fromUtf8(quality.label);
+        }
+    }
+
+    return m_quality.isEmpty() ? QStringLiteral("maj") : m_quality;
 }
 
 QString ChordPickerModel::bass() const
@@ -181,6 +248,21 @@ void ChordPickerModel::applyActive()
     }
 }
 
+void ChordPickerModel::stepRoot(int direction)
+{
+    if (direction == 0) {
+        return;
+    }
+
+    const bool up = direction > 0;
+    int pc = pitchClassForRoot(m_root);
+    if (pc < 0) {
+        pc = 0;
+    }
+    pc = (pc + (up ? 1 : -1) + 12) % 12;
+    setRoot(QString::fromLatin1(up ? SHARP_ROOTS[pc] : FLAT_ROOTS[pc]));
+}
+
 void ChordPickerModel::setRoot(const QString& root)
 {
     if (root.isEmpty()) {
@@ -188,11 +270,15 @@ void ChordPickerModel::setRoot(const QString& root)
     }
 
     if (m_root != root || !m_customSymbol.isEmpty()) {
+        const bool customCleared = !m_customSymbol.isEmpty();
         m_root = root;
         m_customSymbol.clear();
         m_userAdjusted = true;
         emit rootChanged();
-        emit hasCustomSymbolChanged();
+        if (customCleared) {
+            emit hasCustomSymbolChanged();
+            emit qualityLabelChanged();
+        }
         emit previewChanged();
     }
 
@@ -206,6 +292,7 @@ void ChordPickerModel::setQuality(const QString& quality)
         m_customSymbol.clear();
         m_userAdjusted = true;
         emit qualityChanged();
+        emit qualityLabelChanged();
         emit hasCustomSymbolChanged();
         emit previewChanged();
     }
@@ -216,11 +303,15 @@ void ChordPickerModel::setQuality(const QString& quality)
 void ChordPickerModel::setBass(const QString& bass)
 {
     if (m_bass != bass || !m_customSymbol.isEmpty()) {
+        const bool customCleared = !m_customSymbol.isEmpty();
         m_bass = bass;
         m_customSymbol.clear();
         m_userAdjusted = true;
         emit bassChanged();
-        emit hasCustomSymbolChanged();
+        if (customCleared) {
+            emit hasCustomSymbolChanged();
+            emit qualityLabelChanged();
+        }
         emit previewChanged();
     }
 
@@ -382,6 +473,9 @@ void ChordPickerModel::assignSelection(const QString& root, const QString& quali
     if (qualityDiffers) {
         emit qualityChanged();
     }
+    if (qualityDiffers || customDiffers) {
+        emit qualityLabelChanged();
+    }
     if (bassDiffers) {
         emit bassChanged();
     }
@@ -395,7 +489,7 @@ void ChordPickerModel::assignSelection(const QString& root, const QString& quali
 
 bool ChordPickerModel::parseSymbol(const QString& text, QString& root, QString& quality, QString& bass) const
 {
-    if (text.contains(u'|') || text.contains(u'(') || text.contains(u')')) {
+    if (text.contains(u'|')) {
         return false;
     }
 
@@ -421,7 +515,11 @@ bool ChordPickerModel::parseSymbol(const QString& text, QString& root, QString& 
     }
 
     root = matchedRoot;
-    quality = canonicalQuality(body.mid(matchedRoot.size()));
+    QString qualityText = body.mid(matchedRoot.size());
+    if (qualityText.startsWith(u'(') && qualityText.endsWith(u')') && qualityText.size() > 2) {
+        qualityText = qualityText.mid(1, qualityText.size() - 2);
+    }
+    quality = canonicalQuality(qualityText);
     return true;
 }
 
@@ -500,6 +598,9 @@ QString ChordPickerModel::canonicalQuality(const QString& quality) const
         { QStringLiteral("+"), QStringLiteral("aug") },
         { QStringLiteral("sus"), QStringLiteral("sus4") },
         { QStringLiteral("7sus"), QStringLiteral("7sus4") },
+        { QStringLiteral("m7(b9)"), QStringLiteral("m7b9") },
+        { QStringLiteral("7+"), QStringLiteral("aug7") },
+        { QStringLiteral("+7"), QStringLiteral("aug7") },
     };
 
     const auto alias = aliases.constFind(normalized);

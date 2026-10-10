@@ -35,15 +35,80 @@ AbstractElementPopup {
     property alias navigationOrderStart: chordPickerNavPanel.order
     readonly property alias navigationOrderEnd: chordPickerNavPanel.order
 
-    readonly property int popupWidth: 468
+    property bool qualityOpen: false
+    property bool bassOpen: false
 
-    contentWidth: content.width
-    contentHeight: content.height
+    readonly property string bassLabel: pickerModel.bass.length === 0
+                                         ? qsTrc("notation", "None")
+                                         : pickerModel.bass
+    readonly property string qualityChipText: pickerModel.qualityLabel + (qualityOpen ? " ▴" : " ▾")
+    readonly property string bassChipText: bassLabel + (bassOpen ? " ▴" : " ▾")
 
-    margins: 12
+    // Plain arrays, so the repeaters are not stuck on nested QVariantLists.
+    readonly property var qualityTable: {
+        const table = []
+        const rows = pickerModel.qualityRows
+        if (!rows) {
+            return table
+        }
+        for (let r = 0; r < rows.length; ++r) {
+            const items = []
+            const row = rows[r]
+            for (let i = 0; i < row.length; ++i) {
+                items.push({
+                    suffix: row[i].suffix,
+                    label: row[i].label
+                })
+            }
+            table.push(items)
+        }
+        return table
+    }
+
+    readonly property var bassNotes: {
+        const notes = [""]
+        const roots = pickerModel.roots
+        if (!roots) {
+            return notes
+        }
+        for (let i = 0; i < roots.length; ++i) {
+            notes.push(roots[i])
+        }
+        return notes
+    }
+
+    contentWidth: content.implicitWidth
+    contentHeight: content.implicitHeight
+
+    margins: 3
     showArrow: false
     placementPolicies: PopupView.PreferAbove
     focusPolicies: PopupView.DefaultFocus & ~PopupView.ClickFocus
+
+    function qualityRowTitle(row) {
+        switch (row) {
+        case 0: return qsTrc("notation", "Major")
+        case 1: return qsTrc("notation", "Minor")
+        case 2: return qsTrc("notation", "Sus")
+        case 3: return qsTrc("notation", "Dim")
+        }
+        return ""
+    }
+
+    function updatePosition() {
+        if (!parent) {
+            return
+        }
+
+        const gap = 4
+        const popupHeight = Math.max(30, root.contentHeight) + root.padding * 2 + root.margins * 2
+        root.y = -popupHeight - gap
+        root.popupPosition = PopupPosition.Top
+        Qt.callLater(root.repositionWindowIfNeed)
+    }
+
+    onContentHeightChanged: updatePosition()
+    onContentWidthChanged: updatePosition()
 
     model: ChordPickerModel {
         id: pickerModel
@@ -53,198 +118,231 @@ AbstractElementPopup {
         }
     }
 
+    NavigationPanel {
+        id: chordPickerNavPanel
+        name: "ChordPicker"
+        direction: NavigationPanel.Horizontal
+        accessible.name: qsTrc("notation", "Chord symbol picker")
+
+        onNavigationEvent: function(event) {
+            if (event.type === NavigationEvent.Escape) {
+                root.close()
+            }
+        }
+    }
+
     ColumnLayout {
         id: content
+        spacing: 4
 
-        width: root.popupWidth
-        spacing: 10
-
-        NavigationPanel {
-            id: chordPickerNavPanel
-            name: "ChordPicker"
-            direction: NavigationPanel.Horizontal
-            accessible.name: qsTrc("notation", "Chord symbol picker")
-
-            onNavigationEvent: function(event) {
-                if (event.type === NavigationEvent.Escape) {
-                    root.close()
-                }
-            }
-        }
-
-        StyledTextLabel {
-            Layout.fillWidth: true
-            text: qsTrc("notation", "Chord symbol")
-            font: ui.theme.largeBodyBoldFont
-            horizontalAlignment: Text.AlignLeft
-        }
-
-        StyledTextLabel {
-            Layout.fillWidth: true
-            text: qsTrc("notation", "Choosing a root, quality, or bass plays the chord. Press Enter to insert it.")
-            font: ui.theme.bodyFont
-            horizontalAlignment: Text.AlignLeft
-            wrapMode: Text.WordWrap
-            opacity: 0.75
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 40
-            color: ui.theme.backgroundSecondaryColor
-            border.color: ui.theme.strokeColor
-            border.width: 1
-            radius: 4
-
-            StyledTextLabel {
-                anchors.centerIn: parent
-                text: pickerModel.preview.length > 0 ? pickerModel.preview : "—"
-                font: ui.theme.largeBodyBoldFont
-            }
-        }
-
-        StyledTextLabel {
-            Layout.fillWidth: true
-            text: qsTrc("notation", "Root")
-            font: ui.theme.bodyBoldFont
-            horizontalAlignment: Text.AlignLeft
-        }
-
-        Flow {
-            Layout.fillWidth: true
-            Layout.preferredHeight: implicitHeight
-            width: root.popupWidth
-            spacing: 4
+        ColumnLayout {
+            visible: root.qualityOpen
+            spacing: 2
 
             Repeater {
-                model: pickerModel.roots
+                model: root.qualityTable
 
-                delegate: FlatButton {
-                    required property string modelData
-                    required property int index
-
-                    text: modelData
-                    implicitWidth: Math.max(36, text.length * 9 + 16)
-                    implicitHeight: 28
-                    accentButton: !pickerModel.hasCustomSymbol && pickerModel.root === modelData
-
-                    navigation.panel: chordPickerNavPanel
-                    navigation.order: index
-                    accessible.name: modelData
-
-                    onClicked: pickerModel.setRoot(modelData)
-                }
-            }
-        }
-
-        StyledTextLabel {
-            Layout.fillWidth: true
-            text: qsTrc("notation", "Quality")
-            font: ui.theme.bodyBoldFont
-            horizontalAlignment: Text.AlignLeft
-        }
-
-        Flow {
-            Layout.fillWidth: true
-            Layout.preferredHeight: implicitHeight
-            width: root.popupWidth
-            spacing: 4
-
-            Repeater {
-                model: pickerModel.qualities
-
-                delegate: FlatButton {
+                delegate: RowLayout {
+                    id: qualityRow
                     required property var modelData
                     required property int index
 
-                    text: modelData.label
-                    implicitWidth: Math.max(36, text.length * 9 + 16)
-                    implicitHeight: 28
-                    accentButton: !pickerModel.hasCustomSymbol && pickerModel.quality === modelData.suffix
+                    spacing: 2
 
-                    navigation.panel: chordPickerNavPanel
-                    navigation.order: 100 + index
-                    accessible.name: modelData.label
+                    StyledTextLabel {
+                        Layout.preferredWidth: 48
+                        Layout.alignment: Qt.AlignVCenter
+                        text: root.qualityRowTitle(qualityRow.index)
+                        font: ui.theme.bodyFont
+                        horizontalAlignment: Text.AlignRight
+                        opacity: 0.7
+                    }
 
-                    onClicked: pickerModel.setQuality(modelData.suffix)
+                    Repeater {
+                        model: qualityRow.modelData
+
+                        delegate: FlatButton {
+                            required property var modelData
+                            required property int index
+
+                            Layout.alignment: Qt.AlignVCenter
+                            minWidth: 20
+                            margins: 5
+                            text: modelData.label
+                            accentButton: !pickerModel.hasCustomSymbol && pickerModel.quality === modelData.suffix
+
+                            navigation.panel: chordPickerNavPanel
+                            navigation.order: 20 + qualityRow.index * 20 + index
+                            accessible.name: modelData.label
+
+                            onClicked: {
+                                pickerModel.setQuality(modelData.suffix)
+                                root.qualityOpen = false
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        StyledTextLabel {
-            Layout.fillWidth: true
-            text: qsTrc("notation", "Bass")
-            font: ui.theme.bodyBoldFont
-            horizontalAlignment: Text.AlignLeft
-        }
-
-        Flow {
-            Layout.fillWidth: true
-            Layout.preferredHeight: implicitHeight
-            width: root.popupWidth
-            spacing: 4
-
-            FlatButton {
-                text: qsTrc("notation", "None")
-                implicitWidth: Math.max(36, text.length * 9 + 16)
-                implicitHeight: 28
-                accentButton: !pickerModel.hasCustomSymbol && pickerModel.bass.length === 0
-
-                navigation.panel: chordPickerNavPanel
-                navigation.order: 200
-                accessible.name: text
-
-                onClicked: pickerModel.setBass("")
-            }
+        ColumnLayout {
+            visible: root.bassOpen
+            spacing: 2
 
             Repeater {
-                model: pickerModel.roots
+                model: [root.bassNotes.slice(0, 9), root.bassNotes.slice(9)]
 
-                delegate: FlatButton {
-                    required property string modelData
+                delegate: RowLayout {
+                    id: bassRow
+                    required property var modelData
                     required property int index
 
-                    text: modelData
-                    implicitWidth: Math.max(36, text.length * 9 + 16)
-                    implicitHeight: 28
-                    accentButton: !pickerModel.hasCustomSymbol && pickerModel.bass === modelData
+                    spacing: 2
 
-                    navigation.panel: chordPickerNavPanel
-                    navigation.order: 201 + index
-                    accessible.name: qsTrc("notation", "Bass %1").arg(modelData)
+                    Repeater {
+                        model: bassRow.modelData
 
-                    onClicked: pickerModel.setBass(modelData)
+                        delegate: FlatButton {
+                            required property string modelData
+                            required property int index
+
+                            readonly property bool isNone: modelData.length === 0
+
+                            Layout.alignment: Qt.AlignVCenter
+                            minWidth: 28
+                            margins: 5
+                            text: isNone ? qsTrc("notation", "None") : modelData
+                            accentButton: !pickerModel.hasCustomSymbol && pickerModel.bass === modelData
+
+                            navigation.panel: chordPickerNavPanel
+                            navigation.order: 100 + bassRow.index * 9 + index
+                            accessible.name: isNone
+                                             ? qsTrc("notation", "No bass note")
+                                             : qsTrc("notation", "Bass %1").arg(modelData)
+
+                            onClicked: {
+                                pickerModel.setBass(modelData)
+                                root.bassOpen = false
+                            }
+                        }
+                    }
                 }
             }
         }
 
         RowLayout {
-            Layout.fillWidth: true
-            Layout.topMargin: 4
-            spacing: 8
+            id: bar
+            spacing: 2
 
             FlatButton {
-                Layout.fillWidth: true
-                implicitHeight: 32
-                text: qsTrc("notation", "Type instead")
+                Layout.alignment: Qt.AlignVCenter
+                transparent: true
+                icon: IconCode.ARROW_DOWN
 
                 navigation.panel: chordPickerNavPanel
-                navigation.order: 300
-                accessible.name: text
+                navigation.order: 0
+                accessible.name: qsTrc("notation", "Lower root")
+                toolTipTitle: qsTrc("notation", "Lower root a half step")
 
-                onClicked: root.close()
+                onClicked: pickerModel.stepRoot(-1)
+            }
+
+            StyledTextLabel {
+                Layout.preferredWidth: 32
+                Layout.alignment: Qt.AlignVCenter
+                text: pickerModel.root
+                font: ui.theme.bodyBoldFont
+                horizontalAlignment: Text.AlignHCenter
             }
 
             FlatButton {
-                Layout.fillWidth: true
-                implicitHeight: 32
-                text: qsTrc("notation", "Insert")
+                Layout.alignment: Qt.AlignVCenter
+                transparent: true
+                icon: IconCode.ARROW_UP
+
+                navigation.panel: chordPickerNavPanel
+                navigation.order: 1
+                accessible.name: qsTrc("notation", "Raise root")
+                toolTipTitle: qsTrc("notation", "Raise root a half step")
+
+                onClicked: pickerModel.stepRoot(1)
+            }
+
+            Rectangle {
+                Layout.preferredWidth: 1
+                Layout.fillHeight: true
+                Layout.topMargin: 4
+                Layout.bottomMargin: 4
+                color: ui.theme.strokeColor
+            }
+
+            FlatButton {
+                Layout.alignment: Qt.AlignVCenter
+                Layout.maximumWidth: 148
+                minWidth: 44
+                margins: 6
+                text: root.qualityChipText
+                accentButton: root.qualityOpen
+
+                navigation.panel: chordPickerNavPanel
+                navigation.order: 2
+                accessible.name: qsTrc("notation", "Quality %1").arg(pickerModel.qualityLabel)
+                toolTipTitle: qsTrc("notation", "Chord quality")
+
+                onClicked: {
+                    root.qualityOpen = !root.qualityOpen
+                    if (root.qualityOpen) {
+                        root.bassOpen = false
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.preferredWidth: 1
+                Layout.fillHeight: true
+                Layout.topMargin: 4
+                Layout.bottomMargin: 4
+                color: ui.theme.strokeColor
+            }
+
+            FlatButton {
+                Layout.alignment: Qt.AlignVCenter
+                minWidth: 52
+                margins: 6
+                text: root.bassChipText
+                accentButton: root.bassOpen
+
+                navigation.panel: chordPickerNavPanel
+                navigation.order: 3
+                accessible.name: qsTrc("notation", "Bass %1").arg(root.bassLabel)
+                toolTipTitle: qsTrc("notation", "Bass note")
+
+                onClicked: {
+                    root.bassOpen = !root.bassOpen
+                    if (root.bassOpen) {
+                        root.qualityOpen = false
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.preferredWidth: 1
+                Layout.fillHeight: true
+                Layout.topMargin: 4
+                Layout.bottomMargin: 4
+                color: ui.theme.strokeColor
+            }
+
+            FlatButton {
+                Layout.alignment: Qt.AlignVCenter
+                icon: IconCode.TICK_RIGHT_ANGLE
                 accentButton: true
                 enabled: pickerModel.preview.length > 0
 
                 navigation.panel: chordPickerNavPanel
-                navigation.order: 301
-                accessible.name: text
+                navigation.order: 4
+                accessible.name: qsTrc("notation", "Insert")
+                toolTipTitle: qsTrc("notation", "Insert chord symbol")
 
                 onClicked: pickerModel.apply()
             }
