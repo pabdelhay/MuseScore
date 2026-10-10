@@ -49,6 +49,7 @@ class MixerPanelModel : public QAbstractListModel, public QQmlParserStatus, publ
     Q_PROPERTY(int navigationOrderStart READ navigationOrderStart WRITE setNavigationOrderStart NOTIFY navigationOrderStartChanged)
 
     Q_PROPERTY(int count READ rowCount NOTIFY rowCountChanged)
+    Q_PROPERTY(bool chordTracksExpanded READ chordTracksExpanded WRITE setChordTracksExpanded NOTIFY chordTracksExpandedChanged)
 
     QML_ELEMENT
 
@@ -72,10 +73,14 @@ public:
     int navigationOrderStart() const;
     void setNavigationOrderStart(int navigationOrderStart);
 
+    bool chordTracksExpanded() const;
+    void setChordTracksExpanded(bool expanded);
+
 signals:
     void navigationSectionChanged();
     void navigationOrderStartChanged();
     void rowCountChanged();
+    void chordTracksExpandedChanged();
 
 private:
     void classBegin() override {}
@@ -98,7 +103,18 @@ private:
     void subscribeOnAutomationChanges();
 
     int resolveInsertIndex(const engraving::InstrumentTrackId& instrumentTrackId) const;
+    int chordTracksInsertIndex() const;
     int indexOf(const muse::audio::TrackId trackId) const;
+
+    void addChordChannelItem(const muse::audio::TrackId& trackId, const engraving::InstrumentTrackId& instrumentTrackId);
+    void removeChordChannelItem(MixerChannelItem* chordItem);
+    void showChordTracks();
+    void hideChordTracks();
+    void linkChordChannels();
+
+    MixerChannelItem* findChordChannelItem(const muse::audio::TrackId& trackId) const;
+    MixerChannelItem* findInstrumentItemForChord(const MixerChannelItem* chordItem) const;
+    QList<MixerChannelItem*> allChannelItems() const;
 
     MixerChannelItem* buildInstrumentChannelItem(const muse::audio::TrackId trackId, const engraving::InstrumentTrackId& instrumentTrackId,
                                                  bool isPrimary = true);
@@ -118,7 +134,9 @@ private:
     notation::INotationPartsPtr masterNotationParts() const;
 
     QList<MixerChannelItem*> m_mixerChannelList;
+    QList<MixerChannelItem*> m_chordChannelItems;
     MixerChannelItem* m_masterChannelItem = nullptr;
+    bool m_chordTracksExpanded = false;
 
     muse::ui::NavigationSection* m_navigationSection = nullptr;
     int m_navigationOrderStart = 1;

@@ -22,6 +22,8 @@
 
 #include "mixerpanelmodel.h"
 
+#include <QSet>
+
 #include "async/notifylist.h"
 #include "defer.h"
 #include "log.h"
@@ -156,9 +158,23 @@ void MixerPanelModel::reloadItems()
             addInstrumentTrack(instrumentTrackId, isPrimary);
         }
     }
-    for (auto it = instrumentTrackIdMap.cbegin(); it != instrumentTrackIdMap.cend(); ++it) {
-        if (notationPlayback()->isChordSymbolsTrack(it->first)) {
-            addInstrumentTrack(it->first);
+    for (const Part* part : partList) {
+        const InstrumentTrackId chordTrackId = notationPlayback()->chordSymbolsTrackId(part->id());
+        auto search = instrumentTrackIdMap.find(chordTrackId);
+        if (search == instrumentTrackIdMap.cend()) {
+            continue;
+        }
+
+        MixerChannelItem* chordItem = buildInstrumentChannelItem(search->second, chordTrackId, true);
+        m_chordChannelItems.push_back(chordItem);
+        if (!m_chordTracksExpanded) {
+            chordItem->setPanelSection(nullptr);
+        }
+    }
+
+    if (m_chordTracksExpanded) {
+        for (MixerChannelItem* chordItem : m_chordChannelItems) {
+            m_mixerChannelList.push_back(chordItem);
         }
     }
 
@@ -174,6 +190,7 @@ void MixerPanelModel::reloadItems()
     m_masterChannelItem = buildMasterChannelItem();
     m_mixerChannelList.append(m_masterChannelItem);
 
+    linkChordChannels();
     updateItemsPanelsOrder();
     setupConnections();
 }
@@ -189,12 +206,18 @@ void MixerPanelModel::onTrackAdded(const TrackId& trackId)
 
     if (instrumentIt != instrumentTracks.end()) {
         const InstrumentTrackId& instrumentTrackId = instrumentIt->first;
+        if (notationPlayback()->isChordSymbolsTrack(instrumentTrackId)) {
+            addChordChannelItem(trackId, instrumentTrackId);
+            return;
+        }
+
         const Part* part = masterNotationParts()->part(instrumentTrackId.partId);
         bool isPrimary = part ? part->instrument()->id() == instrumentTrackId.instrumentId : true;
         MixerChannelItem* item = buildInstrumentChannelItem(trackId, instrumentTrackId, isPrimary);
         int index = resolveInsertIndex(instrumentTrackId);
 
         addItem(item, index);
+        linkChordChannels();
         return;
     }
 
@@ -230,6 +253,11 @@ void MixerPanelModel::removeItem(const TrackId trackId)
 {
     TRACEFUNC;
 
+    if (MixerChannelItem* chordItem = findChordChannelItem(trackId)) {
+        removeChordChannelItem(chordItem);
+        return;
+    }
+
     int index = indexOf(trackId);
     if (index == INVALID_INDEX) {
         return;
@@ -245,6 +273,8 @@ void MixerPanelModel::removeItem(const TrackId trackId)
     updateOutputResourceItemCount();
 
     emit rowCountChanged();
+
+    linkChordChannels();
 }
 
 void MixerPanelModel::updateItemsPanelsOrder()
@@ -261,8 +291,17 @@ void MixerPanelModel::clear()
     TRACEFUNC;
 
     m_masterChannelItem = nullptr;
-    qDeleteAll(m_mixerChannelList);
+
+    QList<MixerChannelItem*> toDelete = m_mixerChannelList;
+    for (MixerChannelItem* item : m_chordChannelItems) {
+        if (!toDelete.contains(item)) {
+            toDelete.append(item);
+        }
+    }
+
     m_mixerChannelList.clear();
+    m_chordChannelItems.clear();
+    qDeleteAll(toDelete);
 }
 
 void MixerPanelModel::setupConnections()
@@ -301,7 +340,7 @@ void MixerPanelModel::setupConnections()
     }, Asyncable::Mode::SetReplace);
 
     controller()->auxChannelNameChanged().onReceive(this, [this](aux_channel_idx_t index, const std::string& name) {
-        for (MixerChannelItem* item : m_mixerChannelList) {
+        for (MixerChannelItem* item : allChannelItems()) {
             const QMap<aux_channel_idx_t, AuxSendItem*>& items = item->auxSendItems();
             auto it = items.find(index);
 
@@ -344,7 +383,7 @@ void MixerPanelModel::subscribeOnAutomationChanges()
 
     automation->changed().onReceive(this, [this](const AutomationChanges& changes) {
         if (changes.isFullReset) {
-            for (MixerChannelItem* item : m_mixerChannelList) {
+            for (MixerChannelItem* item : allChannelItems()) {
                 item->updateHasAutomationFlags();
             }
             return;
@@ -365,7 +404,7 @@ void MixerPanelModel::subscribeOnAutomationChanges()
             return;
         }
 
-        for (MixerChannelItem* item : m_mixerChannelList) {
+        for (MixerChannelItem* item : allChannelItems()) {
             if (muse::contains(affectedTrackIds, item->instrumentTrackId())) {
                 item->updateHasAutomationFlags();
             }
@@ -433,6 +472,182 @@ int MixerPanelModel::resolveInsertIndex(const engraving::InstrumentTrackId& newI
     }
 
     return INVALID_INDEX;
+}
+
+int MixerPanelModel::chordTracksInsertIndex() const
+{
+    const InstrumentTrackId& metronomeTrackId = notationPlayback()->metronomeTrackId();
+    for (int i = 0; i < m_mixerChannelList.size(); ++i) {
+        const MixerChannelItem* item = m_mixerChannelList.at(i);
+        if (item->instrumentTrackId() == metronomeTrackId
+            || item->type() == MixerChannelItem::Type::Aux
+            || item->type() == MixerChannelItem::Type::Master) {
+            return i;
+        }
+    }
+
+    return m_mixerChannelList.size();
+}
+
+void MixerPanelModel::addChordChannelItem(const TrackId& trackId, const engraving::InstrumentTrackId& instrumentTrackId)
+{
+    if (findChordChannelItem(trackId)) {
+        return;
+    }
+
+    MixerChannelItem* item = buildInstrumentChannelItem(trackId, instrumentTrackId, true);
+    m_chordChannelItems.push_back(item);
+
+    if (m_chordTracksExpanded) {
+        addItem(item, chordTracksInsertIndex());
+    } else {
+        item->setPanelSection(nullptr);
+    }
+
+    linkChordChannels();
+}
+
+void MixerPanelModel::removeChordChannelItem(MixerChannelItem* chordItem)
+{
+    IF_ASSERT_FAILED(chordItem) {
+        return;
+    }
+
+    for (MixerChannelItem* item : m_mixerChannelList) {
+        if (item->chordChannelItem() == chordItem) {
+            item->setChordChannelItem(nullptr);
+        }
+    }
+
+    m_chordChannelItems.removeOne(chordItem);
+
+    const int index = indexOf(chordItem->trackId());
+    if (index != INVALID_INDEX) {
+        beginRemoveRows(QModelIndex(), index, index);
+        m_mixerChannelList.removeAt(index);
+        updateItemsPanelsOrder();
+        endRemoveRows();
+
+        updateOutputResourceItemCount();
+        emit rowCountChanged();
+    }
+
+    chordItem->deleteLater();
+}
+
+void MixerPanelModel::showChordTracks()
+{
+    int index = chordTracksInsertIndex();
+    for (MixerChannelItem* item : m_chordChannelItems) {
+        if (indexOf(item->trackId()) != INVALID_INDEX) {
+            continue;
+        }
+
+        item->setPanelSection(m_navigationSection);
+        addItem(item, index);
+        ++index;
+    }
+
+    updateOutputResourceItemCount();
+}
+
+void MixerPanelModel::hideChordTracks()
+{
+    for (int index = m_mixerChannelList.size() - 1; index >= 0; --index) {
+        MixerChannelItem* item = m_mixerChannelList.at(index);
+        if (!notationPlayback()->isChordSymbolsTrack(item->instrumentTrackId())) {
+            continue;
+        }
+
+        beginRemoveRows(QModelIndex(), index, index);
+        m_mixerChannelList.removeAt(index);
+        endRemoveRows();
+        item->setPanelSection(nullptr);
+    }
+
+    updateItemsPanelsOrder();
+    updateOutputResourceItemCount();
+    emit rowCountChanged();
+}
+
+void MixerPanelModel::linkChordChannels()
+{
+    QSet<MixerChannelItem*> linked;
+
+    for (MixerChannelItem* chordItem : m_chordChannelItems) {
+        MixerChannelItem* instrumentItem = findInstrumentItemForChord(chordItem);
+        if (!instrumentItem) {
+            continue;
+        }
+
+        instrumentItem->setChordChannelItem(chordItem);
+        linked.insert(instrumentItem);
+    }
+
+    for (MixerChannelItem* item : m_mixerChannelList) {
+        if (!linked.contains(item) && item->chordChannelItem()) {
+            item->setChordChannelItem(nullptr);
+        }
+    }
+}
+
+MixerChannelItem* MixerPanelModel::findChordChannelItem(const TrackId& trackId) const
+{
+    for (MixerChannelItem* item : m_chordChannelItems) {
+        if (item->trackId() == trackId) {
+            return item;
+        }
+    }
+
+    return nullptr;
+}
+
+MixerChannelItem* MixerPanelModel::findInstrumentItemForChord(const MixerChannelItem* chordItem) const
+{
+    if (!chordItem || !masterNotationParts() || !notationPlayback()) {
+        return nullptr;
+    }
+
+    const Part* part = masterNotationParts()->part(chordItem->instrumentTrackId().partId);
+    const muse::String primaryInstrId = (part && part->instrument()) ? part->instrument()->id() : muse::String();
+
+    MixerChannelItem* fallback = nullptr;
+    for (MixerChannelItem* item : m_mixerChannelList) {
+        const InstrumentTrackId& instrumentTrackId = item->instrumentTrackId();
+        if (!instrumentTrackId.isValid() || notationPlayback()->isChordSymbolsTrack(instrumentTrackId)) {
+            continue;
+        }
+
+        if (instrumentTrackId == notationPlayback()->metronomeTrackId()) {
+            continue;
+        }
+
+        if (instrumentTrackId.partId != chordItem->instrumentTrackId().partId) {
+            continue;
+        }
+
+        if (!fallback) {
+            fallback = item;
+        }
+
+        if (!primaryInstrId.empty() && instrumentTrackId.instrumentId == primaryInstrId) {
+            return item;
+        }
+    }
+
+    return fallback;
+}
+
+QList<MixerChannelItem*> MixerPanelModel::allChannelItems() const
+{
+    QList<MixerChannelItem*> items = m_mixerChannelList;
+    for (MixerChannelItem* item : m_chordChannelItems) {
+        if (!items.contains(item)) {
+            items.append(item);
+        }
+    }
+
+    return items;
 }
 
 int MixerPanelModel::indexOf(const TrackId trackId) const
@@ -635,7 +850,7 @@ int MixerPanelModel::masterChannelIndex() const
 
 MixerChannelItem* MixerPanelModel::findChannelItem(const TrackId& trackId) const
 {
-    for (MixerChannelItem* item : m_mixerChannelList) {
+    for (MixerChannelItem* item : allChannelItems()) {
         if (item->trackId() == trackId) {
             return item;
         }
@@ -723,4 +938,29 @@ void MixerPanelModel::setNavigationOrderStart(int navigationOrderStart)
     emit navigationOrderStartChanged();
 
     updateItemsPanelsOrder();
+}
+
+bool MixerPanelModel::chordTracksExpanded() const
+{
+    return m_chordTracksExpanded;
+}
+
+void MixerPanelModel::setChordTracksExpanded(bool expanded)
+{
+    if (m_chordTracksExpanded == expanded) {
+        return;
+    }
+
+    m_chordTracksExpanded = expanded;
+    emit chordTracksExpandedChanged();
+
+    if (!controller()->isPlaybackInited()) {
+        return;
+    }
+
+    if (m_chordTracksExpanded) {
+        showChordTracks();
+    } else {
+        hideChordTracks();
+    }
 }
