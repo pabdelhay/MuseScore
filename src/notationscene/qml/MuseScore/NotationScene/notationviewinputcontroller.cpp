@@ -34,6 +34,7 @@
 #include "log.h"
 
 #include "abstractelementpopupmodel.h"
+#include "elementpopups/chordpickermodel.h"
 
 #include "engraving/dom/drumset.h"
 #include "engraving/dom/fret.h"
@@ -167,6 +168,11 @@ void NotationViewInputController::onNotationChanged()
             return;
         }
 
+        if (item->isHarmony() && toHarmony(item)->harmonyType() == HarmonyType::STANDARD) {
+            m_view->showElementPopup(item->type());
+            return;
+        }
+
         m_view->hideElementPopup();
     }, Asyncable::Mode::SetReplace /* FIXME */);
 
@@ -188,6 +194,7 @@ void NotationViewInputController::onNotationChanged()
 
     currNotation->interaction()->textEditingEnded().onReceive(this, [this](const TextBase*) {
         m_view->hideElementPopup(PopupModelType::TYPE_TEXT);
+        m_view->hideElementPopup(PopupModelType::TYPE_HARMONY);
     }, Asyncable::Mode::SetReplace /* FIXME */);
 }
 
@@ -1475,6 +1482,11 @@ void NotationViewInputController::keyPressEvent(QKeyEvent* event)
         viewInteraction()->endDrop();
         m_mouseDownInfo.dragAction = MouseDownInfo::Nothing;
         m_view->asItem()->setCursor({});
+        event->accept();
+    } else if ((key == Qt::Key_Return || key == Qt::Key_Enter)
+               && (event->modifiers() == Qt::NoModifier || event->modifiers() == Qt::KeypadModifier)
+               && m_view->elementPopupIsOpen(ElementType::HARMONY)) {
+        ChordPickerModel::applyActive();
         event->accept();
     } else if (viewInteraction()->isEditingElement()) {
         viewInteraction()->editElement(event);

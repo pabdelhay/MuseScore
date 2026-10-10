@@ -54,6 +54,7 @@ Item {
             case AbstractElementPopupModel.TYPE_SOUND_FLAG: return soundFlagComp
             case AbstractElementPopupModel.TYPE_STAFF_VISIBILITY: return staffVisibilityComp
             case AbstractElementPopupModel.TYPE_DYNAMIC: return dynamicComp
+            case AbstractElementPopupModel.TYPE_HARMONY: return chordPickerComp
             case AbstractElementPopupModel.TYPE_TEXT: return textStyleComp
             case AbstractElementPopupModel.TYPE_PARTIAL_TIE: return partialTieComp
             case AbstractElementPopupModel.TYPE_SHADOW_NOTE: return shadowNoteComp
@@ -180,6 +181,12 @@ Item {
     Component {
         id: dynamicComp
         DynamicPopup {
+        }
+    }
+
+    Component {
+        id: chordPickerComp
+        ChordPickerPopup {
         }
     }
 

@@ -44,6 +44,8 @@ qt_add_qml_module(notationscene_qml
         editpercussionshortcutmodel.h
         elementpopups/caposettingsmodel.cpp
         elementpopups/caposettingsmodel.h
+        elementpopups/chordpickermodel.cpp
+        elementpopups/chordpickermodel.h
         elementpopups/dynamicpopupmodel.cpp
         elementpopups/dynamicpopupmodel.h
         elementpopups/harppedalpopupmodel.cpp
@@ -170,6 +172,7 @@ qt_add_qml_module(notationscene_qml
         EditGridSizeDialog.qml
         EditPercussionShortcutDialog.qml
         elementpopups/CapoPopup.qml
+        elementpopups/ChordPickerPopup.qml
         elementpopups/DynamicPopup.qml
         elementpopups/ElementPopupLoader.qml
         elementpopups/HarpPedalPopup.qml

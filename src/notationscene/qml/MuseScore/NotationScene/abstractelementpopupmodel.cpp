@@ -31,6 +31,8 @@
 #include "notation/inotationundostack.h"
 #include "notation/inotationviewstate.h"
 
+#include "engraving/dom/harmony.h"
+
 #include "elementpopups/partialtiepopupmodel.h"
 #include "elementpopups/shadownotepopupmodel.h"
 
@@ -45,6 +47,7 @@ static const QMap<mu::engraving::ElementType, PopupModelType> ELEMENT_POPUP_TYPE
     { mu::engraving::ElementType::SOUND_FLAG, PopupModelType::TYPE_SOUND_FLAG },
     { mu::engraving::ElementType::STAFF_VISIBILITY_INDICATOR, PopupModelType::TYPE_STAFF_VISIBILITY },
     { mu::engraving::ElementType::DYNAMIC, PopupModelType::TYPE_DYNAMIC },
+    { mu::engraving::ElementType::HARMONY, PopupModelType::TYPE_HARMONY },
     { mu::engraving::ElementType::TEXT, PopupModelType::TYPE_TEXT },
     { mu::engraving::ElementType::STAFF_TEXT, PopupModelType::TYPE_TEXT },
     { mu::engraving::ElementType::SYSTEM_TEXT, PopupModelType::TYPE_TEXT },
@@ -70,6 +73,7 @@ static const QHash<PopupModelType, mu::engraving::ElementTypeSet> POPUP_DEPENDEN
     { PopupModelType::TYPE_SOUND_FLAG, { mu::engraving::ElementType::SOUND_FLAG, mu::engraving::ElementType::STAFF_TEXT } },
     { PopupModelType::TYPE_STAFF_VISIBILITY, { mu::engraving::ElementType::STAFF_VISIBILITY_INDICATOR } },
     { PopupModelType::TYPE_DYNAMIC, { mu::engraving::ElementType::DYNAMIC } },
+    { PopupModelType::TYPE_HARMONY, { mu::engraving::ElementType::HARMONY } },
     { PopupModelType::TYPE_TEXT,
       { mu::engraving::ElementType::TEXT,
         mu::engraving::ElementType::STAFF_TEXT,
@@ -123,6 +127,13 @@ bool AbstractElementPopupModel::hasElementEditPopup(const EngravingItem* element
         return PartialTiePopupModel::canOpen(element);
     case PopupModelType::TYPE_SHADOW_NOTE:
         return ShadowNotePopupModel::canOpen(element);
+    case PopupModelType::TYPE_HARMONY: {
+        const mu::engraving::Harmony* harmony = mu::engraving::toHarmony(element);
+        // Open while a standard chord symbol is being entered (Ctrl+K), not on a plain click.
+        return harmony->harmonyType() == mu::engraving::HarmonyType::STANDARD
+               && harmony->cursor()
+               && harmony->cursor()->editing();
+    }
     default:
         return true;
     }
