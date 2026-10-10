@@ -47,9 +47,13 @@ Loader {
 
     property bool needReadChannelName: false
 
+    property bool showExpandButton: false
+    property bool expanded: false
+
     default property Component delegateComponent
 
     signal navigateControlIndexChanged(var index)
+    signal expandToggled()
 
     active: visible
 
@@ -59,7 +63,7 @@ Loader {
         spacing: 1 // for separator (will be rendered in MixerPanel.qml)
 
         StyledTextLabel {
-            visible: root.headerVisible
+            visible: root.headerVisible && !root.showExpandButton
 
             anchors.top: parent.top
             anchors.topMargin: root.spacingAbove
@@ -72,6 +76,51 @@ Loader {
 
             horizontalAlignment: Qt.AlignRight
             text: root.headerTitle
+        }
+
+        Item {
+            visible: root.headerVisible && root.showExpandButton
+
+            anchors.top: parent.top
+            anchors.topMargin: root.spacingAbove
+
+            width: root.headerWidth
+            height: root.headerHeight
+
+            Row {
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+
+                FlatButton {
+                    id: expandButton
+
+                    width: 20
+                    height: 20
+
+                    icon: root.expanded ? IconCode.SMALL_ARROW_DOWN : IconCode.SMALL_ARROW_RIGHT
+                    transparent: true
+
+                    toolTipTitle: root.expanded
+                                  ? qsTrc("playback", "Hide chord tracks")
+                                  : qsTrc("playback", "Show chord tracks")
+
+                    Accessible.name: toolTipTitle
+
+                    onClicked: root.expandToggled()
+                }
+
+                StyledTextLabel {
+                    width: Math.min(implicitWidth, root.headerWidth - expandButton.width - 14)
+                    height: expandButton.height
+
+                    horizontalAlignment: Text.AlignLeft
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                    text: root.headerTitle
+                }
+            }
         }
 
         ListView {

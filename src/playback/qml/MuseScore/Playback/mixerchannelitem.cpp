@@ -188,6 +188,21 @@ void MixerChannelItem::setPanelSection(muse::ui::INavigationSection* section)
     m_panel->setSection(section);
 }
 
+MixerChannelItem* MixerChannelItem::chordChannelItem() const
+{
+    return m_chordChannelItem;
+}
+
+void MixerChannelItem::setChordChannelItem(MixerChannelItem* chordChannelItem)
+{
+    if (m_chordChannelItem == chordChannelItem) {
+        return;
+    }
+
+    m_chordChannelItem = chordChannelItem;
+    emit chordChannelItemChanged();
+}
+
 void MixerChannelItem::setOutputResourceItemCount(size_t count)
 {
     IF_ASSERT_FAILED(count >= m_outParams.fxChain.size()) {

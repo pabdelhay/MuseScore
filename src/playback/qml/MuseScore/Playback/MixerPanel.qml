@@ -342,6 +342,32 @@ ColumnLayout {
                     prv.setNavigateControlIndex(index)
                 }
             }
+
+            MixerChordsSection {
+                id: chordsSection
+
+                headerVisible: contextMenuModel.labelsSectionVisible
+                headerWidth: prv.headerWidth
+                channelItemWidth: prv.channelItemWidth
+                spacingAbove: 2
+                spacingBelow: 4
+
+                showExpandButton: true
+                expanded: mixerPanelModel.chordTracksExpanded
+
+                model: mixerPanelModel
+
+                navigationRowStart: 800
+                needReadChannelName: prv.isPanelActivated
+
+                onExpandToggled: {
+                    mixerPanelModel.chordTracksExpanded = !mixerPanelModel.chordTracksExpanded
+                }
+
+                onNavigateControlIndexChanged: function(index) {
+                    prv.setNavigateControlIndex(index)
+                }
+            }
         }
     }
 

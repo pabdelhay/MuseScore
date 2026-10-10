@@ -73,6 +73,8 @@ class MixerChannelItem : public QObject, public muse::async::Asyncable, public m
 
     Q_PROPERTY(muse::ui::NavigationPanel * panel READ panel NOTIFY panelChanged)
 
+    Q_PROPERTY(mu::playback::MixerChannelItem * chordChannelItem READ chordChannelItem NOTIFY chordChannelItemChanged)
+
     QML_ELEMENT;
     QML_UNCREATABLE("Must be created in C++ only")
 
@@ -126,6 +128,9 @@ public:
     void setPanelOrder(int panelOrder);
     void setPanelSection(muse::ui::INavigationSection* section);
 
+    MixerChannelItem* chordChannelItem() const;
+    void setChordChannelItem(MixerChannelItem* chordChannelItem);
+
     void updateHasAutomationFlags();
 
     void setOutputResourceItemCount(size_t count);
@@ -174,6 +179,8 @@ signals:
     void forceMuteChanged();
 
     void panelChanged(muse::ui::NavigationPanel* panel);
+
+    void chordChannelItemChanged();
 
     void inputParamsChanged(const project::AudioInputParams& params);
     void controlParamsChanged(const project::AudioOutputParams& params);
@@ -241,6 +248,7 @@ protected:
     float m_rightChannelPressure = 0.0;
 
     muse::ui::NavigationPanel* m_panel = nullptr;
+    MixerChannelItem* m_chordChannelItem = nullptr;
 
     bool m_outputResourceItemsLoading = false;
 };
