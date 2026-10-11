@@ -709,8 +709,10 @@ void Harmony::startEdit(EditData& ed)
         rightParen()->mutldata()->reset();
     }
 
-    // layout as text, without position reset
+    // layout as text, without position reset. layoutBaseTextBase1 adds the
+    // default offset on top of the position the rendered symbol already has.
     renderer()->layoutText1(this, true);
+    mutldata()->move(-defaultPos());
     triggerLayout();
 
     TextBase::startEdit(ed);
@@ -750,8 +752,9 @@ bool Harmony::edit(EditData& ed)
 
     bool rv = TextBase::edit(ed);
 
-    // layout as text, without position reset
+    // layout as text, without position reset. See Harmony::startEdit.
     renderer()->layoutText1(this, true);
+    mutldata()->move(-defaultPos());
     triggerLayout();
 
     // check spelling

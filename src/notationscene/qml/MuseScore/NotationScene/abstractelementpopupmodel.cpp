@@ -129,10 +129,9 @@ bool AbstractElementPopupModel::hasElementEditPopup(const EngravingItem* element
         return ShadowNotePopupModel::canOpen(element);
     case PopupModelType::TYPE_HARMONY: {
         const mu::engraving::Harmony* harmony = mu::engraving::toHarmony(element);
-        // Open while a standard chord symbol is being entered (Ctrl+K), not on a plain click.
-        return harmony->harmonyType() == mu::engraving::HarmonyType::STANDARD
-               && harmony->cursor()
-               && harmony->cursor()->editing();
+        // A selected standard chord symbol shows the picker toggle. Roman numerals and
+        // Nashville numbers stay on their own commands.
+        return harmony->harmonyType() == mu::engraving::HarmonyType::STANDARD;
     }
     default:
         return true;

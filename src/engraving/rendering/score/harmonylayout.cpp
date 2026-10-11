@@ -40,6 +40,11 @@ using namespace mu::engraving::rendering::score;
 void HarmonyLayout::layoutHarmony(Harmony* item, Harmony::LayoutData* ldata,
                                   const LayoutContext& ctx)
 {
+    // Keep the symbol where it was when text editing started. A fresh text
+    // layout would otherwise place it at the style offset again.
+    const bool editing = item->cursor()->editing();
+    const PointF positionWhileEditing = ldata->pos();
+
     if (!item->ownershipParent()) {
         ldata->setPos(0.0, 0.0);
         const_cast<Harmony*>(item)->setOffset(0.0, 0.0);
@@ -70,7 +75,7 @@ void HarmonyLayout::layoutHarmony(Harmony* item, Harmony::LayoutData* ldata,
         item->layoutFrame(ldata);
     }
 
-    ldata->setPos(positionPoint);
+    ldata->setPos(editing ? positionWhileEditing : positionPoint);
 
     if (!item->cursor()->editing() && !ldata->renderItemList.value().empty()) {
         ParenthesisLayout::layoutParentheses(item, ctx);

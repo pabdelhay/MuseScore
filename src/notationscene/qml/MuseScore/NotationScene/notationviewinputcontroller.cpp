@@ -194,7 +194,15 @@ void NotationViewInputController::onNotationChanged()
 
     currNotation->interaction()->textEditingEnded().onReceive(this, [this](const TextBase*) {
         m_view->hideElementPopup(PopupModelType::TYPE_TEXT);
-        m_view->hideElementPopup(PopupModelType::TYPE_HARMONY);
+
+        const INotationPtr notation = currentNotation();
+        const EngravingItem* selected = notation ? notation->interaction()->selection()->element() : nullptr;
+        const bool keepChordPicker = selected
+                                     && AbstractElementPopupModel::modelTypeFromElement(selected->type()) == PopupModelType::TYPE_HARMONY
+                                     && AbstractElementPopupModel::hasElementEditPopup(selected);
+        if (!keepChordPicker) {
+            m_view->hideElementPopup(PopupModelType::TYPE_HARMONY);
+        }
     }, Asyncable::Mode::SetReplace /* FIXME */);
 }
 
@@ -1485,8 +1493,8 @@ void NotationViewInputController::keyPressEvent(QKeyEvent* event)
         event->accept();
     } else if ((key == Qt::Key_Return || key == Qt::Key_Enter)
                && (event->modifiers() == Qt::NoModifier || event->modifiers() == Qt::KeypadModifier)
-               && m_view->elementPopupIsOpen(ElementType::HARMONY)) {
-        ChordPickerModel::applyActive();
+               && m_view->elementPopupIsOpen(ElementType::HARMONY)
+               && ChordPickerModel::applyActive()) {
         event->accept();
     } else if (viewInteraction()->isEditingElement()) {
         viewInteraction()->editElement(event);
