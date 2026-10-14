@@ -1,0 +1,31 @@
+---
+description: How to build and run this MuseScore checkout on Windows
+alwaysApply: true
+---
+
+# Build and run
+
+Use `build.cmake` with `build_overrides.cmake`. Do not use `ninja_build.bat` or a new CMake preset.
+
+- Qt: `C:/Development/Qt/6.11.2/msvc2022_64`
+- Generator: Visual Studio 17 2022, config RelWithDebInfo
+- Build dir: `builds/b` (`BUILD_FOLDER` is `b` on purpose; a longer path breaks MSVC moc files past 260 characters)
+- App: `builds/b/install/bin/MuseScoreStudio5.exe`
+
+From the repo root:
+
+```powershell
+cmake -P build.cmake build install
+```
+
+`build` compiles. `install` copies the app into `builds/b/install`. QML and resource edits show up only after install.
+
+Start the app from its install folder, without waiting for it to exit. Starting it from the repo root makes it quit immediately.
+
+```powershell
+Start-Process .\builds\b\install\bin\MuseScoreStudio5.exe -WorkingDirectory .\builds\b\install\bin
+```
+
+`cmake -P build.cmake run` also launches it, and it holds the shell until MuseScore quits. Arguments after `run` are passed through.
+
+With no arguments, `cmake -P build.cmake` configures only when `builds/b/CMakeCache.txt` is missing, then builds and installs. Delete that tree only for a clean configure: `cmake -P build.cmake clean`.

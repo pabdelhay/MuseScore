@@ -1,0 +1,29 @@
+---
+description: Where chord symbols are realized and played, including the picker preview
+alwaysApply: false
+---
+
+# Chord symbol playback
+
+Score playback and the chord-picker preview are different paths. The picker must not go through the score chord-symbol track.
+
+## Picker preview
+
+`ChordPickerModel::playPreview` in `elementpopups/chordpickermodel.cpp`:
+
+- Reads the close voicing from `generateNotes` on a temporary harmony, so the symbol being typed is not rewritten and does not move.
+- Literal keeps the written chord tones. Jazz passes `literal = false`, the same added ninths and alterations as Realize chord symbols. Bass and inversion are applied on that pitch list for the piano and the preview. They are not written onto the symbol, so score playback is unchanged.
+- Builds a temporary `Chord` and `Note`s on the harmony's parent segment (`Factory`, `setNval` with pitch and `tpc1`) and plays them with `IMasterNotation::playback()->triggerEventsForItems`.
+- Deletes the chord first, then `muse::DeleteAll(notes)`. A parent destructor does not delete those notes.
+- Uses the staff instrument track. A part has a chord-symbol playback track only after `Part::hasChordSymbol()` is true, so the first symbol often has no chord track yet.
+
+## Score playback
+
+- `PlaybackController::playElements` in `src/playback/internal/playbackcontroller.cpp` skips harmony items when `playHarmonyWhenEditing` is off. Do not use it for picker preview.
+- Preference: `IPlaybackConfiguration::playHarmonyWhenEditing`, edited from `noteinputpreferencesmodel.cpp`.
+- Rendering: `PlaybackEventsRenderer::renderChordSymbol` and `PlaybackModel::chordSymbolsTrackId` in `src/engraving/playback/`. The track is created only when `part->hasChordSymbol()`.
+- `NotationPlayback::triggerEventsForItems` forwards to `PlaybackModel::triggerEventsForItems`.
+
+## Realization
+
+`Harmony::setHarmony`, `parseHarmony`, `isRealizable`, and `getRealizedHarmony` are in `src/engraving/dom/harmony.cpp`. Note spelling data is `src/engraving/data/chords/chords_std.xml`.

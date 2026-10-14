@@ -1,0 +1,34 @@
+---
+description: How notation element popups are chosen, shown, and kept from stealing keyboard focus
+alwaysApply: false
+---
+
+# Element popups
+
+Popups float over the score for the current engraving item. The chord picker and the dynamics popup (Ctrl+D) use this path.
+
+## Add or change a popup
+
+1. Append a value to `PopupModelType` in `abstractelementpopupmodel.h`. Do not insert in the middle; QML compares the numeric values.
+2. Map `ElementType` → type, and type → dependent element types, in `abstractelementpopupmodel.cpp`.
+3. Gate opening in `hasElementEditPopup`. Default is "open when that element is selected". A standard harmony opens when it is selected or being typed. Roman numerals and Nashville numbers do not.
+4. Add the QML component in `elementpopups/ElementPopupLoader.qml`.
+5. Subclass `AbstractElementPopupModel`. Register the `.cpp`/`.h` in `NotationScene/CMakeLists.txt` `SOURCES` and the `.qml` in `QML_FILES`.
+
+## When it opens
+
+`notationviewinputcontroller.cpp` `onNotationChanged`:
+
+- `selectionChanged` hides any popup, then shows one if `hasElementEditPopup` is true. Same-element reselection returns early and does not reopen.
+- `textEditingStarted` shows text-style popups, dynamics, and a standard harmony. Other text editing hides the popup.
+- `textEditingEnded` hides `TYPE_TEXT`. It hides `TYPE_HARMONY` only when a standard harmony is no longer selected.
+
+Show and hide go through the notation paint view (`showElementPopup` / `hideElementPopup` / `elementPopupIsOpen`).
+
+## Focus
+
+`ElementPopupLoader.qml` sets `PopupView.NoActivateFocus`. Popups that must leave typing on the score also set `focusPolicies: PopupView.DefaultFocus & ~PopupView.ClickFocus` (see `DynamicPopup.qml`, `ChordPickerPopup.qml`). Handle keys in `NotationViewInputController::keyPressEvent`, not in the popup.
+
+`AbstractElementPopupModel::ignoreTextEditingChanges()` defaults to true, so text-cursor updates do not refresh the model. Override it to false when the popup must follow typed text.
+
+Copy `DynamicPopup.qml` and `dynamicpopupmodel` for a button popup that stays open during text entry.

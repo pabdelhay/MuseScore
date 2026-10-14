@@ -1,0 +1,37 @@
+---
+description: Branch each new functionality from main and merge it into pablos-ideas
+alwaysApply: true
+---
+
+# Feature branches
+
+`pablos-ideas` is the side branch that holds every coded idea. Each functionality lives on its own branch from `main`, so it can become its own pull request.
+
+When starting a functionality:
+
+1. Create the branch from `main`, not from `pablos-ideas` or another feature branch.
+2. Commit only that functionality on the new branch.
+3. Merge that branch into `pablos-ideas`. Keep the feature branch.
+
+```powershell
+git fetch upstream
+git switch main
+git merge --ff-only upstream/main
+git switch -c mixer-redesign
+# commit only this functionality
+git push -u origin mixer-redesign
+git switch pablos-ideas
+git merge mixer-redesign
+```
+
+`upstream` is `musescore/MuseScore`. `origin` is the `pabdelhay/MuseScore` fork. Pull requests go from one feature branch to `upstream` `main`.
+
+Current branches:
+
+- `chord-symbol-picker` — chord picker
+- `mixer-redesign` — mixer chords section
+- `pablos-ideas` — both, plus later functionalities after each is merged
+
+Do not add a second functionality to an existing feature branch. Do not open a pull request from `pablos-ideas`. `cursor-rules` is not a feature branch.
+
+`.cursor/` is stored on the fork-only branch `cursor-rules`. Fetch it and publish edits with the cursor-rules branch rule. `IDEAS.md` and logs stay untracked. These paths are listed in `.git/info/exclude`, not in `.gitignore`, so a feature-branch commit never includes them. Before pushing, the branch diff should contain only that functionality. Do not include the `muse` submodule pointer unless the change is about that submodule.

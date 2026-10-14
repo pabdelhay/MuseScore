@@ -1,0 +1,73 @@
+---
+description: Fetch and publish .cursor on the fork-only cursor-rules branch
+alwaysApply: true
+---
+
+# Cursor rules branch
+
+`.cursor/` is published on `origin/cursor-rules` in the `pabdelhay/MuseScore` fork. In a normal checkout it stays untracked, so feature branches and pull requests to `upstream` do not include it.
+
+`cursor-rules` is `upstream/main` plus the `.cursor/` commit. Publish `.cursor/` only on that branch. Leave `main`, `pablos-ideas`, and feature branches untouched by it.
+
+## Fetch into a checkout
+
+`.git/info/exclude` is local to the clone. Add the ignore lines once, before the first commit, then copy the rules into the working tree without staging them. Skip the `Add-Content` block when `.git/info/exclude` already lists `.cursor/`. Run this from the repo root:
+
+```powershell
+@"
+
+# Local notes. Never commit these; a .gitignore edit would show up in a pull request.
+.cursor/
+IDEAS.md
+aqtinstall.log
+"@ | Add-Content .git\info\exclude
+
+git fetch origin cursor-rules
+git restore --source=origin/cursor-rules --worktree -- .cursor
+```
+
+`git restore --worktree` writes the files and leaves the index alone. The exclude lines then keep `git add` from picking `.cursor/` up. `git check-ignore -v .cursor` should name `.git/info/exclude`.
+
+## Publish rule edits
+
+Do this only when the user asks to save or publish Cursor rules. From the repo root, set aside the local `.cursor/`, commit it on `cursor-rules`, push that branch, then put the untracked copy back on the branch you were using:
+
+```powershell
+$branch = git branch --show-current
+$saved = Join-Path $env:TEMP "musescore-cursor-save"
+if (Test-Path $saved) { Remove-Item -Recurse -Force $saved }
+Copy-Item -Recurse .cursor $saved
+Remove-Item -Recurse -Force .cursor
+
+git fetch origin
+git fetch upstream
+git switch cursor-rules
+if ($LASTEXITCODE -ne 0) { git switch -c cursor-rules --track origin/cursor-rules }
+if ((git branch --show-current) -ne "cursor-rules") {
+  Copy-Item -Recurse $saved .cursor
+  throw "Stayed on $branch. Restored .cursor and skipped the commit."
+}
+
+git merge upstream/main -m "Merge upstream/main into cursor-rules."
+if ($LASTEXITCODE -ne 0) { throw "Merge failed. Stay on cursor-rules and resolve it before committing." }
+
+Remove-Item -Recurse -Force .cursor
+Copy-Item -Recurse $saved .cursor
+git add -f .cursor
+$outside = git diff --cached --name-only | Where-Object { $_ -notlike ".cursor/*" }
+if ($outside) {
+  git reset
+  throw "Refusing to commit paths outside .cursor/."
+}
+if (git diff --cached --quiet) {
+  Write-Host "No .cursor changes to commit."
+} else {
+  git commit -m "Update Cursor rules."
+}
+git push origin cursor-rules
+
+git switch $branch
+git restore --source=cursor-rules --worktree -- .cursor
+```
+
+`git add -f` is required because exclude ignores `.cursor/`. The branch check and the path check run before any commit. `git switch` back removes the tracked copy; the restore puts it back untracked. Afterward, `git status` on the daily branch must not list `.cursor/`.

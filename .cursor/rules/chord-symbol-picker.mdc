@@ -1,0 +1,36 @@
+---
+description: Where the Ctrl+K chord symbol picker lives, and how a symbol gets inserted
+alwaysApply: false
+---
+
+# Chord symbol picker
+
+Opens for a selected **standard** chord symbol (`HarmonyType::STANDARD`), including while it is being typed. Roman numerals and Nashville numbers are separate commands and do not open it.
+
+## Entry
+
+- Shortcut `chord-text` in `src/app/configs/data/shortcuts.xml` (also `shortcuts_mac.xml`, `shortcuts_azerty.xml`).
+- Action `chord-text` in `src/notationscene/internal/notationuiactions.cpp`.
+- `ADD_CHORD_TEXT_COMMAND` in `src/notationscene/internal/notationactioncontroller.cpp` calls `addText(TextStyleType::HARMONY_A)`.
+- `NotationInteraction::addText` in `src/notation/internal/notationinteraction.cpp` creates the item and calls `startEditText`. Ending an empty new harmony deletes it, so insert text **before** `endEditText`.
+
+## Popup wiring
+
+- `notationviewinputcontroller.cpp`: `textEditingStarted` shows the popup for a standard harmony. `textEditingEnded` hides `TYPE_HARMONY` only when a standard harmony is no longer selected.
+- Unmodified Return/Enter while the picker is expanded calls `ChordPickerModel::applyActive()` **before** `editElement`. That writes the symbol and moves to the next chord. The popup does not take keyboard focus, so do not add a QML `Shortcut` for Enter.
+- `AbstractElementPopupModel::hasElementEditPopup` returns true for a selected standard harmony, including a plain click. Roman numerals and Nashville numbers do not open it.
+- The open/close control is a notes icon beside the chord symbol on the staff. It stays there while the chord is selected: gray when the picker is closed, highlighted when it is open. The picker panel has no second hide control. `ui/chordPicker/expanded` remembers that choice. Enter inserts and advances only while it is expanded. The insert button writes the symbol and closes the picker.
+- `TYPE_HARMONY` is the last value of `PopupModelType` in `abstractelementpopupmodel.h`. Keep new values after it.
+- `ElementPopupLoader.qml` maps `TYPE_HARMONY` to `ChordPickerPopup`.
+
+## Picker
+
+- UI: `elementpopups/ChordPickerPopup.qml`. Model: `elementpopups/chordpickermodel.h` / `.cpp`.
+- Register both in `src/notationscene/qml/MuseScore/NotationScene/CMakeLists.txt` (`SOURCES` and `QML_FILES`).
+- `ignoreTextEditingChanges()` is false, so typed text updates the buttons until the user clicks one (`m_userAdjusted`).
+- `setRoot` / `setQuality` / `setBass` update the selection and call `playPreview()`. `commitSymbol()` replaces the editor text inside `beginCommand` / `endCommand` and does not end editing. `apply()` then closes the picker and may call `endEditText()`. `applyActive()` navigates to the next chord after committing; do not touch the model after that call.
+- The popup stays above the symbol (`PopupPosition.Top`) and does not close on an outside press, so a selected chord keeps its toggle.
+- Simple/advanced, sharp/flat, literal/jazz, and inversion are settings under `ui/chordPicker/`. Inversion and literal/jazz change the picker preview only. The inversion button reads “Inversion” at root position and “1st inv”, “2nd inv”, “3rd inv”, and so on after each click. Its width is the widest of those labels, so cycling inversion does not resize the popup. The open/close control sits above the chord symbol. `PreferAbove` pins the window bottom to the parent top and ignores `y`, so `updatePosition()` lifts that parent until the top is a gap above the control. Advanced mode shows a four-octave piano; simple mode shows three. The popup width is fixed within a mode so choosing another chord does not resize it. Advanced mode is wider because quality buttons, and the Literal/Jazz switch, grow to the full label.
+- Entering text edit keeps the chord where it is. `Harmony::startEdit` undoes the extra default offset from text layout, and harmony layout does not reposition a chord while its cursor is editing.
+- Build the symbol with `QStringLiteral`. `u"/" + QString` is ambiguous with `muse::String` on MSVC.
+- Suffix list and parsing live in the model. Realizable names come from `src/engraving/data/chords/chords_std.xml` via `Harmony::setHarmony`.
