@@ -1239,6 +1239,8 @@ void TWrite::writeProperties(const ChordRest* item, XmlWriter& xml, WriteContext
         write(lyrics, xml, ctx);
     }
 
+    const int curTick = ctx.curTick().ticks();
+
     if (!item->isGrace()) {
         Fraction t(item->globalTicks());
         if (item->staff()) {
@@ -1246,6 +1248,77 @@ void TWrite::writeProperties(const ChordRest* item, XmlWriter& xml, WriteContext
         }
         ctx.incCurTick(t);
     }
+
+    if (!ctx.isLegacyFileFormat()) {
+        return;
+    }
+
+    for (auto i : item->score()->spannerMap().findOverlapping(curTick - 1, curTick + 1)) {
+        Spanner* s = i.value;
+        if (s->generated() || !s->isSlur() || !ctx.canWrite(s)) {
+            continue;
+        }
+
+        const bool isPartialSlur = toSlur(s)->partialSpannerDirection() != PartialSpannerDirection::NONE;
+        const bool writeStart = s->startElement() == item && (s->endElement() != item || isPartialSlur);
+        const bool writeEnd = s->endElement() == item && (s->startElement() != item || isPartialSlur);
+
+        if (writeStart) {
+            writeSpannerStart(s, xml, ctx, item, item->track());
+        }
+
+        if (writeEnd) {
+            writeSpannerEnd(s, xml, ctx, item, item->track());
+        }
+    }
+}
+
+static Fraction legacySpannerFraction(bool clipboardmode, const EngravingItem* current, const Fraction& t)
+{
+    Fraction tick(t);
+    if (!clipboardmode) {
+        const Measure* m = toMeasure(current->findMeasure());
+        if (m) {
+            tick -= m->tick();
+        }
+    }
+    return tick;
+}
+
+void TWrite::writeSpannerStart(Spanner* s, XmlWriter& xml, WriteContext& ctx, const EngravingItem* current, track_idx_t track,
+                               Fraction tick)
+{
+    Fraction frac = legacySpannerFraction(ctx.clipboardmode(), current, tick);
+    SpannerWriter w(xml, &ctx, current, s, static_cast<int>(track), frac, true);
+    w.write();
+}
+
+void TWrite::writeSpannerEnd(Spanner* s, XmlWriter& xml, WriteContext& ctx, const EngravingItem* current, track_idx_t track, Fraction tick)
+{
+    Fraction frac = legacySpannerFraction(ctx.clipboardmode(), current, tick);
+    if (frac == s->score()->endTick()) {
+        // Write a location tag if the spanner ends on the last tick of the score
+        Location spannerEndLoc = Location::absolute();
+        spannerEndLoc.setFrac(frac);
+        spannerEndLoc.setMeasure(0);
+        spannerEndLoc.setTrack(static_cast<int>(track));
+        spannerEndLoc.setVoice(static_cast<int>(track2voice(track)));
+        spannerEndLoc.setStaff(static_cast<int>(s->staffIdx()));
+
+        Location prevLoc = Location::absolute();
+        prevLoc.setFrac(ctx.curTick());
+        prevLoc.setMeasure(0);
+        prevLoc.setTrack(static_cast<int>(track));
+        prevLoc.setVoice(static_cast<int>(track2voice(track)));
+        prevLoc.setStaff(static_cast<int>(s->staffIdx()));
+
+        spannerEndLoc.toRelative(prevLoc);
+        if (spannerEndLoc.frac() != Fraction(0, 1)) {
+            write(&spannerEndLoc, xml, ctx);
+        }
+    }
+    SpannerWriter w(xml, &ctx, current, s, static_cast<int>(track), frac, false);
+    w.write();
 }
 
 void TWrite::writeTupletStart(DurationElement* item, XmlWriter& xml, WriteContext& ctx)
@@ -1666,6 +1739,14 @@ void TWrite::writeProperties(const SLine* item, XmlWriter& xml, WriteContext& ct
 void TWrite::writeProperties(const Spanner* item, XmlWriter& xml, WriteContext& ctx)
 {
     writeProperty(item, xml, Pid::PLAY);
+    if (ctx.isLegacyFileFormat()) {
+        // MuseScore 4 connects spanners from prev/next locations, not from these endpoints.
+        if (ctx.clipboardmode()) {
+            xml.tagFraction("ticks_f", item->ticks());
+        }
+        writeItemProperties(item, xml, ctx);
+        return;
+    }
     if (item->anchor() == Spanner::Anchor::SEGMENT) {
         int t2 = static_cast<int>(item->track2()) + ctx.trackDiff();
         xml.tag("track2", t2);
@@ -2495,7 +2576,14 @@ void TWrite::write(const Note* item, XmlWriter& xml, WriteContext& ctx)
         write(item->outgoingPartialTie(), xml, ctx);
     }
 
-    if (Tie* tieBack = item->tieBackNonPartial()) {
+    if (ctx.isLegacyFileFormat()) {
+        if (item->tieForNonPartial()) {
+            writeSpannerStart(item->tieFor(), xml, ctx, item, item->track());
+        }
+        if (item->tieBackNonPartial()) {
+            writeSpannerEnd(item->tieBack(), xml, ctx, item, item->track());
+        }
+    } else if (Tie* tieBack = item->tieBackNonPartial()) {
         Note* tieStartNote = tieBack->startNote();
         const std::optional<Fraction>& firstClipboardTick = ctx.firstClipboardTick();
         bool tieStartOutOfRange = firstClipboardTick.has_value() && tieStartNote
@@ -2518,8 +2606,17 @@ void TWrite::write(const Note* item, XmlWriter& xml, WriteContext& ctx)
         writeProperty(item, xml, id);
     }
 
-    for (Spanner* e : item->spannerBack()) {
-        TWrite::writeItem(e, xml, ctx);
+    if (ctx.isLegacyFileFormat()) {
+        for (Spanner* e : item->spannerFor()) {
+            writeSpannerStart(e, xml, ctx, item, item->track());
+        }
+        for (Spanner* e : item->spannerBack()) {
+            writeSpannerEnd(e, xml, ctx, item, item->track());
+        }
+    } else {
+        for (Spanner* e : item->spannerBack()) {
+            TWrite::writeItem(e, xml, ctx);
+        }
     }
 
     for (EngravingItem* e : item->chord()->el()) {
@@ -2617,7 +2714,15 @@ void TWrite::write(const Parenthesis* item, XmlWriter& xml, WriteContext& ctx)
 void TWrite::write(const Part* item, XmlWriter& xml, WriteContext& ctx)
 {
     if (item->isSharedPart()) {
-        write(toSharedPart(item), xml, ctx);
+        if (!ctx.isLegacyFileFormat()) {
+            write(toSharedPart(item), xml, ctx);
+            return;
+        }
+        // MuseScore 4 has no shared parts. Keep the staves by writing a normal part.
+        xml.startElement("Part", item, { { "id", item->id().toUint64() } });
+        writeItemEid(item, xml);
+        writeProperties(item, xml, ctx);
+        xml.endElement();
         return;
     }
 
@@ -2627,9 +2732,11 @@ void TWrite::write(const Part* item, XmlWriter& xml, WriteContext& ctx)
 
     writeProperties(item, xml, ctx);
 
-    if (SharedPart* sharedPart = item->sharedPart()) {
-        DO_ASSERT(sharedPart->eid().isValid());
-        xml.tag("sharedPart", sharedPart->eid().toStdString());
+    if (!ctx.isLegacyFileFormat()) {
+        if (SharedPart* sharedPart = item->sharedPart()) {
+            DO_ASSERT(sharedPart->eid().isValid());
+            xml.tag("sharedPart", sharedPart->eid().toStdString());
+        }
     }
 
     xml.endElement();
@@ -3632,6 +3739,23 @@ void TWrite::writeSegments(XmlWriter& xml, WriteContext& ctx, track_idx_t strack
         }
     }
 
+    const Fraction legacyEndTick = eseg ? eseg->tick() : (score->lastMeasure() ? score->lastMeasure()->endTick() : sseg->tick());
+    std::vector<Spanner*> legacySpanners;
+    if (ctx.isLegacyFileFormat()) {
+        const auto overlapping = score->spannerMap().findOverlapping(sseg->tick().ticks(), legacyEndTick.ticks());
+        for (auto i : overlapping) {
+            Spanner* s = i.value;
+            if (s->generated() || !ctx.canWrite(s)) {
+                continue;
+            }
+            // don't write voltas to clipboard
+            if (clip && s->isVolta() && s->systemFlag()) {
+                continue;
+            }
+            legacySpanners.push_back(s);
+        }
+    }
+
     int lastTrackWritten = static_cast<int>(strack - 1);   // for counting necessary <voice> tags
     for (track_idx_t track = strack; track < etrack; ++track) {
         if (!ctx.canWriteVoice(track)) {
@@ -3709,6 +3833,39 @@ void TWrite::writeSegments(XmlWriter& xml, WriteContext& ctx, track_idx_t strack
                 TWrite::writeItem(e1, xml, ctx);
             }
 
+            if (ctx.isLegacyFileFormat() && !(segment->measure() && segment->measure()->isMMRest())) {
+                for (Spanner* s : legacySpanners) {
+                    if (!segment->canWriteSpannerStartEnd(track, s)) {
+                        continue;
+                    }
+                    if (s->track() == track) {
+                        bool end = false;
+                        if (s->anchor() == Spanner::Anchor::CHORDREST || s->anchor() == Spanner::Anchor::NOTE) {
+                            end = s->tick2() < legacyEndTick;
+                        } else {
+                            end = s->tick2() <= legacyEndTick;
+                        }
+                        if (s->tick() == segment->tick() && (!clip || end) && !s->isSlur()) {
+                            if (needMove) {
+                                voiceTagWritten |= writeVoiceMove(xml, ctx, segment, startTick, track, &lastTrackWritten);
+                                needMove = false;
+                            }
+                            writeSpannerStart(s, xml, ctx, segment, track);
+                        }
+                    }
+                    if ((s->tick2() == segment->tick())
+                        && !s->isSlur()
+                        && (s->effectiveTrack2() == track)
+                        && (!clip || s->tick() >= sseg->tick())) {
+                        if (needMove) {
+                            voiceTagWritten |= writeVoiceMove(xml, ctx, segment, startTick, track, &lastTrackWritten);
+                            needMove = false;
+                        }
+                        writeSpannerEnd(s, xml, ctx, segment, track);
+                    }
+                }
+            }
+
             if (!e || !ctx.canWrite(e)) {
                 continue;
             }
@@ -3762,6 +3919,29 @@ void TWrite::writeSegments(XmlWriter& xml, WriteContext& ctx, track_idx_t strack
                 if (segment->segmentType() == SegmentType::ChordRest) {
                     crWritten = true;
                 }
+            }
+        }
+
+        // write spanners whose end tick lies outside the clip region
+        if (clip && ctx.isLegacyFileFormat()) {
+            for (Spanner* s : legacySpanners) {
+                Fraction spannerEndTick = s->tick2();
+                bool spannerEndingAtEdgeOfClipZone = spannerEndTick == legacyEndTick && !s->isSlur() && s->effectiveTrack2() == track
+                                                     && s->tick() >= sseg->tick();
+                if (!spannerEndingAtEdgeOfClipZone) {
+                    continue;
+                }
+                bool needMove = spannerEndTick != ctx.curTick();
+                if (needMove) {
+                    Location curr = Location::absolute();
+                    Location dest = Location::absolute();
+                    curr.setFrac(ctx.curTick());
+                    dest.setFrac(spannerEndTick);
+                    dest.toRelative(curr);
+                    TWrite::write(&dest, xml, ctx);
+                    ctx.setCurTick(spannerEndTick);
+                }
+                writeSpannerEnd(s, xml, ctx, score->lastMeasure(), track, legacyEndTick);
             }
         }
 

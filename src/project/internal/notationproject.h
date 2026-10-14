@@ -104,6 +104,8 @@ public:
 
     muse::Ret save(
         const muse::io::path_t& path = muse::io::path_t(), SaveMode saveMode = SaveMode::Save, bool createBackup = true) override;
+    void setSaveCompatibilityVersion(int mscVersion) override;
+    int saveCompatibilityVersion() const override;
     muse::Ret savePage(const muse::io::path_t& path, const size_t pageNum) override;
     muse::async::Channel<muse::io::path_t, SaveMode> saveComplited() const override;
 
@@ -125,6 +127,8 @@ private:
 
     muse::Ret saveScore(const muse::io::path_t& path, const std::string& fileSuffix, bool generateBackup = true,
                         bool createThumbnail = true, bool isAutosave = false, const engraving::write::WriteContext* ctx = nullptr);
+    int mscVersionForSave(SaveMode mode) const;
+    void updateCompatibilityMetaTag(int mscVersion);
     muse::Ret saveSelectionOnScore(const muse::io::path_t& path = muse::io::path_t());
     muse::Ret exportProject(const muse::io::path_t& path, const std::string& suffix);
     muse::Ret doSave(const muse::io::path_t& path, engraving::MscIoMode ioMode, bool generateBackup = true, bool createThumbnail = true,
@@ -158,5 +162,8 @@ private:
     bool m_isNeedSave = false;
     bool m_needAutoSave = false;
     bool m_hasNonUndoStackChanges = false;
+
+    //! File format chosen in the save dialog. 0 means the current MuseScore format.
+    int m_saveCompatibilityVersion = 0;
 };
 }

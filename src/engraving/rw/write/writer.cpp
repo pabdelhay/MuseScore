@@ -58,7 +58,8 @@ bool Writer::writeScore(Score* score, io::IODevice* device, rw::WriteInOutData* 
 
     xml.startDocument();
 
-    xml.startElement("museScore", { { "version", Constants::MSC_VERSION_STR } });
+    const char* fileVersion = MScore::testMode ? "2.00" : Constants::mscVersionString(ctx.mscVersion());
+    xml.startElement("museScore", { { "version", fileVersion } });
 
     if (!MScore::testMode) {
         xml.tag("programVersion", application()->version().toString());
@@ -75,7 +76,7 @@ bool Writer::writeScore(Score* score, io::IODevice* device, rw::WriteInOutData* 
         //update version values for i.e. plugin access
         score->m_mscoreVersion = application()->version().toString();
         score->m_mscoreRevision = application()->revision().toInt(nullptr, 16);
-        score->m_mscVersion = Constants::MSC_VERSION;
+        score->m_mscVersion = ctx.mscVersion();
     }
 
     if (inout) {
@@ -262,11 +263,17 @@ void Writer::write(Score* score, XmlWriter& xml, WriteContext& ctx, compat::Writ
     }
     ctx.setCurTrack(muse::nidx);
 
-    TWrite::writeScoreSpanners(score, xml, ctx);
+    // MuseScore 4 locates spanners with connectors written next to the notes.
+    // The 5.00 SpannerMap is skipped for that file format.
+    if (!ctx.isLegacyFileFormat()) {
+        TWrite::writeScoreSpanners(score, xml, ctx);
+    }
 
     hook.onWriteExcerpts302(score, xml, ctx);
 
-    TWrite::writePageLocks(score, xml);
+    if (!ctx.isLegacyFileFormat()) {
+        TWrite::writePageLocks(score, xml);
+    }
     TWrite::writeSystemLocks(score, xml);
     TWrite::writeSystemDividers(score, xml, ctx);
 

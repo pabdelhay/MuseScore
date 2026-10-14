@@ -117,6 +117,9 @@ inline const QString SOURCE_TAG("source");
 inline const QString SOURCE_REVISION_ID_TAG("sourceRevisionId");
 inline const QString AUDIO_COM_URL_TAG("audioComUrl");
 
+//! File-format version chosen so an older MuseScore can open the score. Not shown in project properties.
+inline const QString MSC_COMPATIBILITY_TAG("mscCompatibility");
+
 inline bool isStandardTag(const QString& tag)
 {
     static const QSet<QString> standardTags {
@@ -135,7 +138,9 @@ inline bool isStandardTag(const QString& tag)
 
         SOURCE_TAG,
         SOURCE_REVISION_ID_TAG,
-        AUDIO_COM_URL_TAG
+        AUDIO_COM_URL_TAG,
+
+        MSC_COMPATIBILITY_TAG
     };
 
     return standardTags.contains(tag);
@@ -155,7 +160,9 @@ inline bool isRepresentedInProjectMeta(const QString& tag)
         PLATFORM_TAG,
 
         SOURCE_TAG,
-        AUDIO_COM_URL_TAG
+        AUDIO_COM_URL_TAG,
+
+        MSC_COMPATIBILITY_TAG
     };
 
     return projectMetaTags.contains(tag);

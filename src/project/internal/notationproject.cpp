@@ -50,6 +50,7 @@
 #include "engraving/infrastructure/mscio.h"
 #include "engraving/rw/inoutdata.h"
 #include "engraving/rw/write/writecontext.h"
+#include "engraving/types/constants.h"
 
 #include "iprojectautosaver.h"
 #include "notation/iexcerptnotation.h" // IWYU pragma: keep
@@ -247,6 +248,12 @@ Ret NotationProject::doLoad(const muse::io::path_t& path, const OpenParams& open
         m_cloudInfo.revisionId = masterScore->metaTags()[SOURCE_REVISION_ID_TAG].toInt();
 
         m_cloudAudioInfo.url = masterScore->metaTags()[AUDIO_COM_URL_TAG].toQString();
+
+        bool compatibilityOk = false;
+        const int compatibilityVersion = masterScore->metaTag(MSC_COMPATIBILITY_TAG).toInt(&compatibilityOk);
+        if (compatibilityOk && compatibilityVersion > 0 && compatibilityVersion < Constants::MSC_VERSION) {
+            m_saveCompatibilityVersion = compatibilityVersion;
+        }
 
         if (configuration()->isLegacyCloudProject(path)) {
             m_cloudInfo.name = io::filename(path, false).toQString();
@@ -501,9 +508,67 @@ void NotationProject::setCloudAudioInfo(const CloudAudioInfo& audioInfo)
     m_masterNotation->masterScore()->setMetaTag(AUDIO_COM_URL_TAG, audioInfo.url.toString());
 }
 
+void NotationProject::setSaveCompatibilityVersion(int mscVersion)
+{
+    if (mscVersion <= 0) {
+        return;
+    }
+    m_saveCompatibilityVersion = mscVersion;
+}
+
+int NotationProject::saveCompatibilityVersion() const
+{
+    return m_saveCompatibilityVersion;
+}
+
+int NotationProject::mscVersionForSave(SaveMode mode) const
+{
+    if (mode == SaveMode::AutoSave || m_saveCompatibilityVersion <= 0
+        || m_saveCompatibilityVersion >= Constants::MSC_VERSION) {
+        return Constants::MSC_VERSION;
+    }
+    return m_saveCompatibilityVersion;
+}
+
+void NotationProject::updateCompatibilityMetaTag(int mscVersion)
+{
+    MasterScore* score = m_masterNotation ? m_masterNotation->masterScore() : nullptr;
+    if (!score) {
+        return;
+    }
+
+    std::map<String, String> tags = score->metaTags();
+    if (mscVersion >= Constants::MSC_VERSION) {
+        tags.erase(MSC_COMPATIBILITY_TAG);
+    } else {
+        tags.insert_or_assign(MSC_COMPATIBILITY_TAG, String::number(mscVersion));
+    }
+    score->setMetaTags(tags);
+}
+
 Ret NotationProject::save(const muse::io::path_t& path, SaveMode saveMode, bool createBackup)
 {
     TRACEFUNC;
+
+    const int mscVersion = mscVersionForSave(saveMode);
+    if (saveMode != SaveMode::AutoSave) {
+        updateCompatibilityMetaTag(mscVersion);
+    }
+
+    std::vector<std::pair<Score*, int> > previousVersions;
+    if (m_masterNotation && m_masterNotation->masterScore()) {
+        for (Score* score : m_masterNotation->masterScore()->scoreList()) {
+            previousVersions.push_back({ score, score->mscVersion() });
+        }
+    }
+    DEFER {
+        for (const auto& [score, version] : previousVersions) {
+            score->setMscVersion(version);
+        }
+    };
+
+    write::WriteContext saveCtx(m_masterNotation->masterScore());
+    saveCtx.setMscVersion(mscVersion);
 
     Ret ret;
     muse::io::path_t savePath = path;
@@ -528,7 +593,7 @@ Ret NotationProject::save(const muse::io::path_t& path, SaveMode saveMode, bool 
         // Whether a backup file will be created depends on both the caller's and user's will
         bool shouldCreateBackup = createBackup && configuration()->createBackupBeforeSaving();
 
-        ret = saveScore(savePath, suffix, shouldCreateBackup);
+        ret = saveScore(savePath, suffix, shouldCreateBackup, true /*createThumbnail*/, false /*isAutosave*/, &saveCtx);
         if (ret) {
             if (saveMode != SaveMode::SaveCopy) {
                 markAsSaved(savePath);
@@ -558,7 +623,7 @@ Ret NotationProject::save(const muse::io::path_t& path, SaveMode saveMode, bool 
             suffix = engraving::MSCX;
         }
 
-        ret = saveScore(savePath, suffix, false /*generateBackup*/, false /*createThumbnail*/, true /*isAutosave*/);
+        ret = saveScore(savePath, suffix, false /*generateBackup*/, false /*createThumbnail*/, true /*isAutosave*/, &saveCtx);
     } break;
     case SaveMode::SavePage:
         ASSERT_X("Use savePage(path, pageNum)");
@@ -965,6 +1030,7 @@ Ret NotationProject::saveSelectionOnScore(const muse::io::path_t& path)
     }
 
     write::WriteContext ctx(score);
+    ctx.setMscVersion(mscVersionForSave(SaveMode::SaveSelection));
     ctx.setRange(range);
     ctx.setFilter(score->selectionFilter());
 
@@ -1265,6 +1331,10 @@ void NotationProject::setMetaInfo(const ProjectMeta& meta, bool undoable)
     }
 
     MasterScore* score = m_masterNotation->masterScore();
+    const String compatibility = score->metaTag(MSC_COMPATIBILITY_TAG);
+    if (!compatibility.empty()) {
+        tags.insert_or_assign(MSC_COMPATIBILITY_TAG, compatibility);
+    }
 
     if (undoable) {
         m_masterNotation->notation()->undoStack()->prepareChanges(TranslatableString("undoableAction", "Edit project properties"));

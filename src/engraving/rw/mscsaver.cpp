@@ -40,6 +40,8 @@
 
 #include "engraving/automation/internal/automationrw.h"
 
+#include "types/constants.h"
+
 #include "rwregister.h"
 #include "inoutdata.h"
 
@@ -66,7 +68,8 @@ bool MscSaver::writeMscz(MasterScore* score, MscWriter& mscWriter, bool createTh
         //! At the moment, the style for the parts is still writing to the score file.
         ByteArray styleData;
         auto styleBuf = Buffer::opened(IODevice::WriteOnly, &styleData);
-        score->style().write(&styleBuf);
+        const int mscVersion = ctx ? ctx->mscVersion() : Constants::MSC_VERSION;
+        score->style().write(&styleBuf, mscVersion);
         mscWriter.writeStyleFile(styleData);
     }
 
@@ -109,7 +112,7 @@ bool MscSaver::writeMscz(MasterScore* score, MscWriter& mscWriter, bool createTh
                 data.fileName = excerpt->fileName();
 
                 auto styleBuf = Buffer::opened(IODevice::WriteOnly, &data.styleData);
-                partScore->style().write(&styleBuf);
+                partScore->style().write(&styleBuf, masterWriteOutData.ctx.mscVersion());
 
                 WriteInOutData writeOutData = masterWriteOutData;
                 auto scoreBuf = Buffer::opened(IODevice::ReadWrite, &data.scoreData);
@@ -184,8 +187,8 @@ bool MscSaver::writeMscz(MasterScore* score, MscWriter& mscWriter, bool createTh
         }
     }
 
-    // Write automation
-    {
+    // Write automation. MuseScore 4 does not read this file.
+    if (!ctx || !ctx->isLegacyFileFormat()) {
         if (score->automationData()) {
             ByteArray data = AutomationRW::write(*score->automationData(), false /*writeGenerated*/);
             if (!data.empty()) {

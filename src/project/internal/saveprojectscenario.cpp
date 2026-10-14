@@ -27,6 +27,9 @@
 #include <QFileInfo>
 #include <QTemporaryFile>
 #include <QUrl>
+#include <QVariant>
+
+#include "engraving/types/constants.h"
 
 #include "defer.h"
 #include "translation.h"
@@ -60,6 +63,47 @@ static Promise<T> resolvedPromise(const T& value)
 
 static constexpr int RETRY_SAVE_BTN_ID = int(IInteractive::Button::CustomButton);
 static constexpr int SAVE_AS_BTN_ID    = RETRY_SAVE_BTN_ID + 1;
+
+//! Temporary suffix used only so the save dialog can tell a MuseScore 4 file from the current format.
+//! The file is written as .mscz, which MuseScore 4 can open.
+static const std::string MUSESCORE_4_SAVE_SUFFIX("mscz4");
+
+static std::vector<std::string> museScoreSaveFileTypes()
+{
+    std::vector<std::string> types {
+        muse::trc("project/save", "MuseScore Studio file") + " (*." + engraving::MSCZ + ")"
+    };
+
+    if (engraving::Constants::MSC_VERSION > engraving::Constants::MSC_VERSION_MUSESCORE_4) {
+        types.push_back(muse::trc("project/save", "MuseScore 4 compatible") + " (*." + MUSESCORE_4_SAVE_SUFFIX + ")");
+    }
+
+    return types;
+}
+
+static QVariantList saveCompatibilityOptions()
+{
+    QVariantList options;
+
+    QVariantMap current;
+    current["text"] = muse::qtrc("project/save", "MuseScore Studio %1 (current)").arg(engraving::Constants::MSC_VERSION / 100);
+    current["value"] = engraving::Constants::MSC_VERSION;
+    options.push_back(current);
+
+    if (engraving::Constants::MSC_VERSION > engraving::Constants::MSC_VERSION_MUSESCORE_4) {
+        QVariantMap museScore4;
+        museScore4["text"] = muse::qtrc("project/save", "MuseScore 4");
+        museScore4["value"] = engraving::Constants::MSC_VERSION_MUSESCORE_4;
+        options.push_back(museScore4);
+    }
+
+    return options;
+}
+
+static muse::io::path_t pathWithMuseScoreSuffix(const muse::io::path_t& path)
+{
+    return io::dirpath(path).appendingComponent(io::completeBasename(path)).appendingSuffix(engraving::MSCZ);
+}
 
 INotationProjectPtr SaveProjectScenario::currentNotationProject() const
 {
@@ -1497,25 +1541,31 @@ Promise<RetVal<muse::io::path_t> > SaveProjectScenario::askLocalPath(INotationPr
 
     muse::io::path_t defaultPath = configuration()->defaultSavingFilePath(project, filenameAddition);
 
-    std::vector<std::string> filter {
-        muse::trc("project", "MuseScore file") + " (*.mscz)",
-        muse::trc("project", "Uncompressed MuseScore folder [experimental]")
+    std::vector<std::string> filter = museScoreSaveFileTypes();
+    filter.push_back(muse::trc("project", "Uncompressed MuseScore folder [experimental]")
 #ifdef Q_OS_MAC
-        + " (*)"
+                     + " (*)"
 #else
-        + " (*.)"
+                     + " (*.)"
 #endif
-    };
+                     );
 
     return interactive()->selectSavingFile(dialogTitle, defaultPath, filter)
-           .then<RetVal<muse::io::path_t> >(this, [this](const muse::io::path_t& path, auto resolve, auto) {
+           .then<RetVal<muse::io::path_t> >(this, [this, project](const muse::io::path_t& path, auto resolve, auto) {
         muse::io::path_t selectedPath = path;
 
         if (selectedPath.empty()) {
             return resolve(RetVal<muse::io::path_t>(make_ret(Ret::Code::Cancel)));
         }
 
-        if (!engraving::isMuseScoreFile(io::suffix(selectedPath))) {
+        const std::string suffix = io::suffix(selectedPath);
+        int mscVersion = engraving::Constants::MSC_VERSION;
+        if (suffix == MUSESCORE_4_SAVE_SUFFIX) {
+            // The dialog only returns a path, so the MuseScore 4 type uses a distinct suffix.
+            // MuseScore 4 opens .mscz, so that is the file we actually write.
+            mscVersion = engraving::Constants::MSC_VERSION_MUSESCORE_4;
+            selectedPath = pathWithMuseScoreSuffix(selectedPath);
+        } else if (!engraving::isMuseScoreFile(suffix)) {
             // Then it must be that the user is trying to save a mscx file.
             // At the selected path, a folder will be created,
             // and inside the folder, a mscx file will be created.
@@ -1523,9 +1573,35 @@ Promise<RetVal<muse::io::path_t> > SaveProjectScenario::askLocalPath(INotationPr
             selectedPath = selectedPath.appendingComponent(io::filename(selectedPath)).appendingSuffix(engraving::MSCX);
         }
 
-        configuration()->setLastSavedProjectsPath(io::dirpath(selectedPath));
+        auto acceptPath = [this, project, mscVersion, selectedPath, resolve]() {
+            if (project) {
+                project->setSaveCompatibilityVersion(mscVersion);
+            }
+            configuration()->setLastSavedProjectsPath(io::dirpath(selectedPath));
+            return resolve(RetVal<muse::io::path_t>::make_ok(selectedPath));
+        };
 
-        return resolve(RetVal<muse::io::path_t>::make_ok(selectedPath));
+        // Choosing MuseScore 4 rewrites *.mscz4 to *.mscz. Confirm if that file is already there,
+        // because the system dialog confirmed the temporary suffix instead.
+        if (suffix == MUSESCORE_4_SAVE_SUFFIX && fileSystem()->exists(selectedPath)) {
+            const std::string title = muse::trc("project/save", "Replace existing file?");
+            const std::string message = muse::mtrc("project/save", "“%1” already exists. Saving for MuseScore 4 replaces it.")
+                                        .arg(io::filename(selectedPath).toString()).toStdString();
+            interactive()->question(title, message, {
+                IInteractive::Button::Cancel,
+                IInteractive::Button::Ok
+            }, IInteractive::Button::Ok)
+            .onResolve(this, [acceptPath, resolve](const IInteractive::Result& res) {
+                if (!res.isButton(IInteractive::Button::Ok)) {
+                    (void)resolve(RetVal<muse::io::path_t>(make_ret(Ret::Code::Cancel)));
+                    return;
+                }
+                (void)acceptPath();
+            });
+            return Promise<RetVal<muse::io::path_t> >::dummy_result();
+        }
+
+        return acceptPath();
     }, [](int code, const std::string& err, auto resolve, auto) {
         //! NOTE Choosing nothing is not an error to report
         if (code == int(Ret::Code::Cancel)) {
@@ -1767,15 +1843,24 @@ Promise<RetVal<CloudProjectInfo> > SaveProjectScenario::askCloudProjectInfo(INot
 {
     const CloudProjectInfo existingProjectInfo = project->cloudInfo();
 
+    int initialCompatibility = project->saveCompatibilityVersion();
+    if (initialCompatibility <= 0) {
+        initialCompatibility = engraving::Constants::MSC_VERSION;
+    }
+
     UriQuery query("musescore://project/savetocloud");
     query.addParam("isPublishShare", Val(isPublishShare));
     query.addParam("name", Val(defaultName));
     query.addParam("visibility", Val(defaultVisibility));
     query.addParam("existingScoreOrAudioUrl", Val(existingScoreUrl.toString()));
     query.addParam("cloudCode", Val(cloud::MUSESCORE_COM_CLOUD_CODE));
+    query.addParam("mscVersion", Val(initialCompatibility));
+    query.addParam("showCompatibility", Val(true));
+    query.addParam("compatibilityOptions", Val::fromQVariant(saveCompatibilityOptions()));
 
     return openDialog(query)
-           .then<RetVal<CloudProjectInfo> >(this, [this, mode, isPublishShare, existingProjectInfo](const RetVal<Val>& rv, auto resolve) {
+           .then<RetVal<CloudProjectInfo> >(this, [this, project, mode, isPublishShare, existingProjectInfo](const RetVal<Val>& rv,
+                                                                                                             auto resolve) {
         if (!rv.ret) {
             return resolve(RetVal<CloudProjectInfo>(rv.ret));
         }
@@ -1800,6 +1885,14 @@ Promise<RetVal<CloudProjectInfo> > SaveProjectScenario::askCloudProjectInfo(INot
 
         result.name = vals["name"].toString();
         result.visibility = static_cast<cloud::Visibility>(vals["visibility"].toInt());
+
+        int mscVersion = vals["mscVersion"].toInt();
+        if (mscVersion <= 0) {
+            mscVersion = engraving::Constants::MSC_VERSION;
+        }
+        if (project) {
+            project->setSaveCompatibilityVersion(mscVersion);
+        }
 
         warnBeforePublishing(isPublishShare, result.visibility).onResolve(this, [result, resolve](bool agreed) {
             if (!agreed) {

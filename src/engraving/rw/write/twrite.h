@@ -25,6 +25,7 @@
 #include "writecontext.h"
 
 #include "../../dom/property.h"
+#include "../../types/fraction.h"
 
 namespace mu::engraving {
 class EngravingItem;
@@ -367,6 +368,12 @@ private:
 
     static void writeTupletStart(DurationElement* item, XmlWriter& xml, WriteContext& ctx);
     static void writeTupletEnd(DurationElement* item, XmlWriter& xml, WriteContext& ctx);
+
+    //! Connector-based spanner ends, read by MuseScore 4.
+    static void writeSpannerStart(Spanner* s, XmlWriter& xml, WriteContext& ctx, const EngravingItem* current, track_idx_t track,
+                                  Fraction tick = { -1, 1 });
+    static void writeSpannerEnd(Spanner* s, XmlWriter& xml, WriteContext& ctx, const EngravingItem* current, track_idx_t track,
+                                Fraction tick = { -1, 1 });
 
     static void writePageLock(const RangeLock* pageLock, XmlWriter& xml);
     static void writeSystemLock(const RangeLock* systemLock, XmlWriter& xml);
