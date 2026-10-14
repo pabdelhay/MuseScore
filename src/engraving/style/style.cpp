@@ -739,11 +739,15 @@ void MStyle::read(XmlReader& e, compat::ReadChordListHook* readChordListHook, in
     }
 }
 
-bool MStyle::write(IODevice* device)
+bool MStyle::write(IODevice* device, int mscVersion)
 {
+    if (mscVersion <= 0) {
+        mscVersion = Constants::MSC_VERSION;
+    }
+
     XmlWriter xml(device);
     xml.startDocument();
-    xml.startElement("museScore", { { "version", Constants::MSC_VERSION_STR } });
+    xml.startElement("museScore", { { "version", Constants::mscVersionString(mscVersion) } });
     save(xml, false);
     xml.endElement();
     return true;

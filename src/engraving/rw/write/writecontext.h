@@ -25,6 +25,7 @@
 
 #include "engraving/dom/select.h"
 #include "engraving/dom/score.h"
+#include "engraving/types/constants.h"
 
 namespace mu::engraving::write {
 struct WriteRange {
@@ -77,6 +78,12 @@ public:
     const std::optional<WriteRange>& range() const { return _range; }
     void setRange(const WriteRange& v) { _range = v; }
 
+    //! File format to write. Current scores use Constants::MSC_VERSION.
+    //! Older values write a file that version of MuseScore can open.
+    int mscVersion() const { return m_mscVersion; }
+    void setMscVersion(int version) { m_mscVersion = version > 0 ? version : Constants::MSC_VERSION; }
+    bool isLegacyFileFormat() const { return m_mscVersion < Constants::MSC_VERSION; }
+
     inline bool operator==(const WriteContext& c) const
     {
         return _curTick == c._curTick
@@ -86,7 +93,8 @@ public:
                && _clipboardmode == c._clipboardmode
                && _filter == c._filter
                && _range == c._range
-               && _firstClipboardTick == c._firstClipboardTick;
+               && _firstClipboardTick == c._firstClipboardTick
+               && m_mscVersion == c.m_mscVersion;
     }
 
     inline bool operator!=(const WriteContext& c) const { return !this->operator==(c); }
@@ -105,5 +113,6 @@ private:
     std::optional<WriteRange> _range;
     std::optional<SelectionFilter> _filter;
     std::optional<Fraction> _firstClipboardTick;
+    int m_mscVersion = Constants::MSC_VERSION;
 };
 }

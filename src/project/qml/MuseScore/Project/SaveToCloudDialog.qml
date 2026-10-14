@@ -37,6 +37,15 @@ StyledDialogView {
     property bool replaceExisting: true
     property string cloudCode: ""
 
+    //! File format versions the score can be saved as. The current version is the default.
+    property var compatibilityOptions: [
+        { text: qsTrc("project/save", "MuseScore Studio 5 (current)"), value: 500 },
+        { text: qsTrc("project/save", "MuseScore 4"), value: 460 }
+    ]
+    property int mscVersion: 500
+    readonly property int currentMscVersion: 500
+    property bool showCompatibility: false
+
     contentWidth: contentItem.implicitWidth
     contentHeight: contentItem.implicitHeight
 
@@ -179,6 +188,41 @@ StyledDialogView {
 
                 ColumnLayout {
                     spacing: 8
+                    visible: root.showCompatibility && root.compatibilityOptions.length > 1
+
+                    StyledTextLabel {
+                        Layout.fillWidth: true
+                        text: qsTrc("project/save", "Compatibility")
+                        horizontalAlignment: Text.AlignLeft
+                    }
+
+                    StyledDropdown {
+                        Layout.fillWidth: true
+
+                        model: root.compatibilityOptions
+
+                        currentIndex: indexOfValue(root.mscVersion > 0 ? root.mscVersion : root.currentMscVersion)
+
+                        navigation.panel: optionsNavPanel
+                        navigation.row: 2
+                        navigation.accessible.name: qsTrc("project/save", "Compatibility") + ": " + currentText
+
+                        onActivated: function(index, value) {
+                            root.mscVersion = value
+                        }
+                    }
+
+                    StyledTextLabel {
+                        Layout.fillWidth: true
+                        visible: root.mscVersion > 0 && root.mscVersion < root.currentMscVersion
+                        text: qsTrc("project/save", "This file can be opened in the selected version of MuseScore. Features added since then are not kept.")
+                        horizontalAlignment: Text.AlignLeft
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                ColumnLayout {
+                    spacing: 8
 
                     StyledTextLabel {
                         Layout.fillWidth: true
@@ -195,7 +239,7 @@ StyledDialogView {
                         currentIndex: indexOfValue(root.visibility)
 
                         navigation.panel: optionsNavPanel
-                        navigation.row: 2
+                        navigation.row: 3
                         navigation.accessible.name: qsTrc("project/cloud", "Visibility") + ": " + currentText
 
                         onActivated: function(index, value) {
@@ -225,7 +269,7 @@ StyledDialogView {
 
                         navigation.name: modelData.text
                         navigation.panel: optionsNavPanel
-                        navigation.row: 3 + model.index
+                        navigation.row: 4 + model.index
 
                         onToggled: {
                             root.replaceExisting = modelData.value
@@ -268,7 +312,8 @@ StyledDialogView {
                         root.done(SaveToCloudResponse.Ok, {
                                       name: root.name,
                                       visibility: root.visibility,
-                                      replaceExisting: root.replaceExisting
+                                      replaceExisting: root.replaceExisting,
+                                      mscVersion: root.mscVersion > 0 ? root.mscVersion : root.currentMscVersion
                                   })
                     }
                 }

@@ -76,6 +76,10 @@ public:
 
     virtual muse::Ret save(const muse::io::path_t& path = muse::io::path_t(), SaveMode saveMode = SaveMode::Save,
                            bool createBackup = true) = 0;
+
+    //! 0 keeps the current choice. A positive file-format version is used the next time the score is saved.
+    virtual void setSaveCompatibilityVersion(int mscVersion) = 0;
+    virtual int saveCompatibilityVersion() const = 0;
     virtual muse::Ret savePage(const muse::io::path_t& path, const size_t pageNum) = 0;
     virtual muse::async::Channel<muse::io::path_t, SaveMode> saveComplited() const = 0;
 

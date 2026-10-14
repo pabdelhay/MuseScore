@@ -31,6 +31,30 @@ struct Constants
     static constexpr int MSC_VERSION = 500;
     static constexpr const char* MSC_VERSION_STR = "5.00";
 
+    // File-format version written so an older MuseScore can open the score.
+    // 4.60 is the newest format MuseScore 4 reads.
+    static constexpr int MSC_VERSION_MUSESCORE_4 = 460;
+
+    static constexpr const char* mscVersionString(int version)
+    {
+        switch (version) {
+        case 500: return "5.00";
+        case 470: return "4.70";
+        case 460: return "4.60";
+        case 450: return "4.50";
+        case 440: return "4.40";
+        case 430: return "4.30";
+        case 420: return "4.20";
+        case 410: return "4.10";
+        case 400: return "4.00";
+        case 302: return "3.02";
+        case 301: return "3.01";
+        case 206: return "2.06";
+        case 114: return "1.14";
+        default: return MSC_VERSION_STR;
+        }
+    }
+
 // History:
 //    1.3   added staff->_barLineSpan
 //    1.4   (Version 0.9)

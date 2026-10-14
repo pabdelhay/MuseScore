@@ -73,7 +73,8 @@ public:
     int defaultStyleVersion() const;
 
     bool read(muse::io::IODevice* device, bool ign = false);
-    bool write(muse::io::IODevice* device);
+    //! \param mscVersion file format stamped on the style. -1 writes the current format.
+    bool write(muse::io::IODevice* device, int mscVersion = -1);
     void save(XmlWriter& xml, bool optimize);
     static bool isValid(muse::io::IODevice* device);
 
