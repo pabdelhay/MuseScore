@@ -59,6 +59,8 @@ public:
     MOCK_METHOD(void, setNeedAutoSave, (bool val), (override));
 
     MOCK_METHOD(muse::Ret, save, (const muse::io::path_t& path, SaveMode saveMode, bool createBackup), (override));
+    MOCK_METHOD(void, setSaveCompatibilityVersion, (int mscVersion), (override));
+    MOCK_METHOD(int, saveCompatibilityVersion, (), (const, override));
     MOCK_METHOD(muse::Ret, savePage, (const muse::io::path_t& path, const size_t pageNum), (override));
     MOCK_METHOD((muse::async::Channel<muse::io::path_t, SaveMode>), saveComplited, (), (const, override));
     MOCK_METHOD(muse::Ret, writeToDevice, (QIODevice * device), (override));
