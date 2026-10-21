@@ -135,6 +135,7 @@ void MixerPanelModel::reloadItems()
     clear();
 
     if (!controller()->isPlaybackInited()) {
+        updateHasChordChannels();
         return;
     }
 
@@ -177,6 +178,8 @@ void MixerPanelModel::reloadItems()
             m_mixerChannelList.push_back(chordItem);
         }
     }
+
+    updateHasChordChannels();
 
     addInstrumentTrack(notationPlayback()->metronomeTrackId());
 
@@ -497,6 +500,7 @@ void MixerPanelModel::addChordChannelItem(const TrackId& trackId, const engravin
 
     MixerChannelItem* item = buildInstrumentChannelItem(trackId, instrumentTrackId, true);
     m_chordChannelItems.push_back(item);
+    updateHasChordChannels();
 
     if (m_chordTracksExpanded) {
         addItem(item, chordTracksInsertIndex());
@@ -520,6 +524,7 @@ void MixerPanelModel::removeChordChannelItem(MixerChannelItem* chordItem)
     }
 
     m_chordChannelItems.removeOne(chordItem);
+    updateHasChordChannels();
 
     const int index = indexOf(chordItem->trackId());
     if (index != INVALID_INDEX) {
@@ -938,6 +943,22 @@ void MixerPanelModel::setNavigationOrderStart(int navigationOrderStart)
     emit navigationOrderStartChanged();
 
     updateItemsPanelsOrder();
+}
+
+bool MixerPanelModel::hasChordChannels() const
+{
+    return m_hasChordChannels;
+}
+
+void MixerPanelModel::updateHasChordChannels()
+{
+    const bool hasChordChannels = !m_chordChannelItems.isEmpty();
+    if (m_hasChordChannels == hasChordChannels) {
+        return;
+    }
+
+    m_hasChordChannels = hasChordChannels;
+    emit hasChordChannelsChanged();
 }
 
 bool MixerPanelModel::chordTracksExpanded() const

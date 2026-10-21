@@ -360,6 +360,7 @@ ColumnLayout {
             MixerChordsSection {
                 id: chordsSection
 
+                visible: mixerPanelModel.hasChordChannels
                 headerVisible: contextMenuModel.labelsSectionVisible
                 headerWidth: prv.headerWidth
                 channelItemWidth: prv.channelItemWidth
