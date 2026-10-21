@@ -165,6 +165,20 @@ ColumnLayout {
             flickable.completed = true
         }
 
+        // Slightly different surface so the chords row is distinct from the strips above it.
+        // Follow the viewport horizontally so the band fills the panel without widening the scrollable area.
+        Rectangle {
+            id: chordsRowBackground
+
+            x: flickable.contentX
+            y: contentColumn.y + chordsSection.y
+            width: flickable.width
+            height: chordsSection.height
+
+            color: Utils.colorWithAlpha(ui.theme.fontPrimaryColor, 0.08)
+            enabled: false
+        }
+
         Row {
             id: separators
 
@@ -346,6 +360,7 @@ ColumnLayout {
             MixerChordsSection {
                 id: chordsSection
 
+                visible: mixerPanelModel.hasChordChannels
                 headerVisible: contextMenuModel.labelsSectionVisible
                 headerWidth: prv.headerWidth
                 channelItemWidth: prv.channelItemWidth

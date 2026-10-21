@@ -49,6 +49,7 @@ class MixerPanelModel : public QAbstractListModel, public QQmlParserStatus, publ
     Q_PROPERTY(int navigationOrderStart READ navigationOrderStart WRITE setNavigationOrderStart NOTIFY navigationOrderStartChanged)
 
     Q_PROPERTY(int count READ rowCount NOTIFY rowCountChanged)
+    Q_PROPERTY(bool hasChordChannels READ hasChordChannels NOTIFY hasChordChannelsChanged)
     Q_PROPERTY(bool chordTracksExpanded READ chordTracksExpanded WRITE setChordTracksExpanded NOTIFY chordTracksExpandedChanged)
 
     QML_ELEMENT
@@ -73,6 +74,8 @@ public:
     int navigationOrderStart() const;
     void setNavigationOrderStart(int navigationOrderStart);
 
+    bool hasChordChannels() const;
+
     bool chordTracksExpanded() const;
     void setChordTracksExpanded(bool expanded);
 
@@ -80,6 +83,7 @@ signals:
     void navigationSectionChanged();
     void navigationOrderStartChanged();
     void rowCountChanged();
+    void hasChordChannelsChanged();
     void chordTracksExpandedChanged();
 
 private:
@@ -111,6 +115,7 @@ private:
     void showChordTracks();
     void hideChordTracks();
     void linkChordChannels();
+    void updateHasChordChannels();
 
     MixerChannelItem* findChordChannelItem(const muse::audio::TrackId& trackId) const;
     MixerChannelItem* findInstrumentItemForChord(const MixerChannelItem* chordItem) const;
@@ -136,6 +141,7 @@ private:
     QList<MixerChannelItem*> m_mixerChannelList;
     QList<MixerChannelItem*> m_chordChannelItems;
     MixerChannelItem* m_masterChannelItem = nullptr;
+    bool m_hasChordChannels = false;
     bool m_chordTracksExpanded = false;
 
     muse::ui::NavigationSection* m_navigationSection = nullptr;

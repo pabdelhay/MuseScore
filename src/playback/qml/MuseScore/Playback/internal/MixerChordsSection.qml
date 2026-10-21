@@ -41,6 +41,10 @@ MixerPanelSection {
         readonly property MixerChannelItem chordChannel: channelItem.chordChannelItem
         readonly property bool hasChords: Boolean(chordChannel)
 
+        // Channel faders run down to -∞ (-60 dB), which parks everyday levels
+        // at the end of a knob. The chord dial rides a tighter -24..+12 dB scale.
+        readonly property real chordVolumeMin: -24
+
         width: root.channelItemWidth
         height: 28
 
@@ -70,9 +74,12 @@ MixerPanelSection {
 
                 radius: 12
 
-                from: content.chordChannel ? content.chordChannel.volumeLevelMin : -60
+                from: content.chordVolumeMin
                 to: content.chordChannel ? content.chordChannel.volumeLevelMax : 12
-                value: content.chordChannel ? content.chordChannel.volumeLevel : 0
+                value: content.chordChannel
+                       ? Math.max(content.chordVolumeMin,
+                                  Math.min(content.chordChannel.volumeLevel, content.chordChannel.volumeLevelMax))
+                       : 0
                 stepSize: 1
 
                 enabled: content.hasChords && !content.chordChannel.hasVolumeAutomation
