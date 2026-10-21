@@ -20,6 +20,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <vector>
+
 #include <gtest/gtest.h>
 
 #include "engraving/compat/scoreaccess.h"
@@ -455,6 +457,63 @@ TEST_F(Engraving_ChordSymbolTests, testAddHarmonyToFretDiagram)
     score->addText(TextStyleType::HARMONY_A, fretDiag);
 
     EXPECT_TRUE(fretDiag->harmony());
+
+    delete score;
+}
+
+static std::vector<int> realizedPitches(Harmony* harmony)
+{
+    std::vector<int> pitches;
+    for (const auto& note : harmony->getRealizedHarmony().notes()) {
+        pitches.push_back(note.first);
+    }
+    return pitches;
+}
+
+// The chord picker voices a symbol in close position from C4, with the bass
+// around C3, and can rotate that voicing. Playback has to use the same notes.
+TEST_F(Engraving_ChordSymbolTests, testKeyboardVoicingMatchesChordPicker)
+{
+    MasterScore* score = test_pre(u"realize");
+    Segment* segment = score->firstSegment(SegmentType::ChordRest);
+    Harmony* harmony = nullptr;
+    while (segment) {
+        EngravingItem* item = segment->findAnnotation(ElementType::HARMONY, 0, score->ntracks());
+        if (item) {
+            harmony = toHarmony(item);
+            break;
+        }
+        segment = segment->next1();
+    }
+    ASSERT_TRUE(harmony);
+
+    harmony->setProperty(Pid::TEXT, String(u"Cmaj7"));
+    harmony->setProperty(Pid::HARMONY_VOICE_LITERAL, true);
+
+    // Untouched symbols keep the historical close voicing.
+    EXPECT_EQ(realizedPitches(harmony), (std::vector<int> { 36, 60, 64, 67, 71 }));
+
+    harmony->setProperty(Pid::HARMONY_VOICING, int(Voicing::KEYBOARD));
+    harmony->setProperty(Pid::HARMONY_INVERSION, 0);
+    EXPECT_EQ(realizedPitches(harmony), (std::vector<int> { 48, 60, 64, 67, 71 }));
+
+    harmony->setProperty(Pid::HARMONY_INVERSION, 1);
+    EXPECT_EQ(realizedPitches(harmony), (std::vector<int> { 48, 64, 67, 71, 72 }));
+
+    harmony->setProperty(Pid::TEXT, String(u"C13"));
+    harmony->setProperty(Pid::HARMONY_INVERSION, 0);
+    harmony->setProperty(Pid::HARMONY_VOICE_LITERAL, true);
+    EXPECT_EQ(realizedPitches(harmony), (std::vector<int> { 48, 60, 62, 64, 65, 67, 69, 70 }));
+
+    harmony->setProperty(Pid::HARMONY_VOICE_LITERAL, false);
+    EXPECT_EQ(realizedPitches(harmony), (std::vector<int> { 48, 60, 62, 64, 67, 69, 70 }));
+
+    std::vector<int> transposed;
+    for (const auto& note : harmony->realizedHarmony().generateNotes(
+             harmony->rootTpc(), harmony->bassTpc(), false, Voicing::KEYBOARD, 2, 0)) {
+        transposed.push_back(note.first);
+    }
+    EXPECT_EQ(transposed, (std::vector<int> { 50, 62, 64, 66, 69, 71, 72 }));
 
     delete score;
 }

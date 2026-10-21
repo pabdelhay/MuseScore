@@ -161,6 +161,11 @@ AbstractElementPopup {
 
     margins: 0
     showArrow: false
+    // Padding is PopupView's drop-shadow gutter. Collapsed, the window is only
+    // that gutter, and the shadow draws on the open/close button.
+    readonly property int shadowPadding: 12
+    padding: pickerModel.expanded ? shadowPadding : 0
+    useDropShadow: pickerModel.expanded
     placementPolicies: PopupView.PreferAbove
     focusPolicies: PopupView.DefaultFocus & ~PopupView.ClickFocus
     closePolicies: PopupView.NoAutoClose

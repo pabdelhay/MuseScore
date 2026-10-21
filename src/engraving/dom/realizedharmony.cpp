@@ -22,6 +22,8 @@
 
 #include "realizedharmony.h"
 
+#include <algorithm>
+
 #include "chordlist.h"
 #include "harmony.h"
 #include "pitchspelling.h"
@@ -72,6 +74,18 @@ void RealizedHarmony::setLiteral(bool literal)
     cascadeDirty(true);
 }
 
+void RealizedHarmony::setInversion(int inversion)
+{
+    if (inversion < 0) {
+        inversion = 0;
+    }
+    if (m_inversion == inversion) {
+        return;
+    }
+    m_inversion = inversion;
+    cascadeDirty(true);
+}
+
 //---------------------------------------------------
 //   notes
 ///   returns the list of notes
@@ -90,8 +104,24 @@ const RealizedHarmony::PitchMap& RealizedHarmony::notes() const
 ///   generates a note list based on the passed parameters
 //---------------------------------------------------
 const RealizedHarmony::PitchMap RealizedHarmony::generateNotes(int rootTpc, int bassTpc,
-                                                               bool literal, Voicing voicing, int transposeOffset) const
+                                                               bool literal, Voicing voicing, int transposeOffset,
+                                                               int inversion) const
 {
+    if (voicing == Voicing::KEYBOARD) {
+        const auto pitchClassOf = [](int tpc) {
+            const int pitch = tpc2pitch(tpc);
+            return (pitch % PITCH_DELTA_OCTAVE + PITCH_DELTA_OCTAVE) % PITCH_DELTA_OCTAVE;
+        };
+        const int rootPitchClass = tpcIsValid(rootTpc) ? pitchClassOf(rootTpc) : 0;
+        int bassPitchClass = rootPitchClass;
+        int resolvedBassTpc = rootTpc;
+        if (tpcIsValid(bassTpc)) {
+            bassPitchClass = pitchClassOf(bassTpc);
+            resolvedBassTpc = bassTpc;
+        }
+        return voiceKeyboard(keyboardTones(rootTpc, literal), bassPitchClass, resolvedBassTpc, inversion, transposeOffset);
+    }
+
     //cut octaves from offset
     transposeOffset %= PITCH_DELTA_OCTAVE;
 
@@ -216,7 +246,7 @@ void RealizedHarmony::update(int rootTpc, int bassTpc, int transposeOffset /*= 0
     }
 
     if (tpcIsValid(rootTpc)) {
-        m_notes = generateNotes(rootTpc, bassTpc, m_literal, m_voicing, transposeOffset);
+        m_notes = generateNotes(rootTpc, bassTpc, m_literal, m_voicing, transposeOffset, m_inversion);
     }
     m_dirty = false;
 }
@@ -276,6 +306,128 @@ Fraction RealizedHarmony::getActualDuration(int utick, HDuration durationType) c
 }
 
 //---------------------------------------------------
+//   keyboardTones
+///   pitch classes of the chord, one of each, sorted by
+///   interval from the root. Jazz approach tones that
+///   depend on the next chord are left out so this matches
+///   the chord picker, which realizes a standalone symbol.
+//---------------------------------------------------
+std::vector<RealizedHarmony::KeyboardTone> RealizedHarmony::keyboardTones(int rootTpc, bool literal) const
+{
+    std::vector<KeyboardTone> tones;
+    if (!m_harmony || !m_harmony->parsedForm() || !tpcIsValid(rootTpc)) {
+        return tones;
+    }
+
+    const int rootPitchClass = (tpc2pitch(rootTpc) % PITCH_DELTA_OCTAVE + PITCH_DELTA_OCTAVE) % PITCH_DELTA_OCTAVE;
+    std::map<int, int> pitchClassToTpc;
+    pitchClassToTpc.emplace(rootPitchClass, rootTpc);
+
+    // followNext is false: the picker previews the symbol on its own.
+    const PitchMap intervals = getIntervals(rootTpc, literal, false);
+    for (const auto& interval : intervals) {
+        if (!tpcIsValid(interval.second)) {
+            continue;
+        }
+        const int pitchClass = (rootPitchClass + (interval.first % 128)) % PITCH_DELTA_OCTAVE;
+        pitchClassToTpc.emplace(pitchClass, interval.second);
+    }
+
+    tones.reserve(pitchClassToTpc.size());
+    for (const auto& pitchClass : pitchClassToTpc) {
+        KeyboardTone tone;
+        tone.pitchClass = pitchClass.first;
+        tone.tpc = pitchClass.second;
+        tone.interval = (tone.pitchClass - rootPitchClass + PITCH_DELTA_OCTAVE) % PITCH_DELTA_OCTAVE;
+        tones.push_back(tone);
+    }
+    std::sort(tones.begin(), tones.end(), [](const KeyboardTone& a, const KeyboardTone& b) {
+        return a.interval < b.interval;
+    });
+    return tones;
+}
+
+//---------------------------------------------------
+//   voiceKeyboard
+///   stacks chord tones the way the chord picker does.
+///   Right hand starts at C4 and inversion rotates which
+///   tone is on the bottom. The bass sits around C3 and
+///   drops an octave when it would crowd the right hand.
+//---------------------------------------------------
+RealizedHarmony::PitchMap RealizedHarmony::voiceKeyboard(const std::vector<KeyboardTone>& tones, int bassPitchClass, int bassTpc,
+                                                         int inversion, int transposeOffset)
+{
+    static constexpr int BASS_PITCH = 48;       // C3
+    static constexpr int RIGHT_HAND_PITCH = 60; // C4
+
+    const auto normalize = [](int pitch) {
+        return (pitch % PITCH_DELTA_OCTAVE + PITCH_DELTA_OCTAVE) % PITCH_DELTA_OCTAVE;
+    };
+
+    int offset = transposeOffset % PITCH_DELTA_OCTAVE;
+    if (offset < 0) {
+        offset += PITCH_DELTA_OCTAVE;
+    }
+
+    struct Tone {
+        int pitchClass = 0;
+        int tpc = 0;
+        int interval = 0;
+    };
+    std::vector<Tone> ordered;
+    ordered.reserve(tones.size());
+    for (const KeyboardTone& tone : tones) {
+        Tone voiced;
+        voiced.pitchClass = normalize(tone.pitchClass + offset);
+        voiced.tpc = tone.tpc;
+        voiced.interval = tone.interval;
+        ordered.push_back(voiced);
+    }
+    std::sort(ordered.begin(), ordered.end(), [](const Tone& a, const Tone& b) {
+        return a.interval < b.interval;
+    });
+
+    PitchMap notes;
+    const int count = int(ordered.size());
+    int previousPitch = -1;
+    int firstPitch = -1;
+    if (count > 0) {
+        const int index = (inversion % count + count) % count;
+        for (int i = 0; i < count; ++i) {
+            const Tone& tone = ordered[(index + i) % count];
+            int pitch = 0;
+            if (previousPitch < 0) {
+                pitch = RIGHT_HAND_PITCH + tone.pitchClass;
+                firstPitch = pitch;
+            } else {
+                int delta = normalize(tone.pitchClass - previousPitch);
+                if (delta == 0) {
+                    delta = PITCH_DELTA_OCTAVE;
+                }
+                pitch = previousPitch + delta;
+            }
+            previousPitch = pitch;
+            notes.insert({ pitch, tone.tpc });
+        }
+    }
+
+    if (tpcIsValid(bassTpc) || count > 0) {
+        int pitch = BASS_PITCH + normalize(bassPitchClass + offset);
+        if (firstPitch >= 0 && pitch >= firstPitch - 2) {
+            pitch -= PITCH_DELTA_OCTAVE;
+        }
+        int tpc = bassTpc;
+        if (!tpcIsValid(tpc) && count > 0) {
+            tpc = ordered.front().tpc;
+        }
+        if (tpcIsValid(tpc)) {
+            notes.insert({ pitch, tpc });
+        }
+    }
+    return notes;
+}
+
+//---------------------------------------------------
 //   getIntervals
 ///   gets a weighted map from intervals to TPCs based on
 ///   a passed root tpc (this allows for us to
@@ -289,7 +441,7 @@ Fraction RealizedHarmony::getActualDuration(int utick, HDuration durationType) c
 ///   - Rank 3: Other alterations and additions
 ///   - Rank 4: 5th and (in major/dominant chords) 11th
 //---------------------------------------------------
-RealizedHarmony::PitchMap RealizedHarmony::getIntervals(int rootTpc, bool literal) const
+RealizedHarmony::PitchMap RealizedHarmony::getIntervals(int rootTpc, bool literal, bool followNext) const
 {
     //RANKING SYSTEM
     static const int RANK_MULT = 128;   //used as multiplier and mod since MIDI pitch goes from 0-127
@@ -498,7 +650,7 @@ RealizedHarmony::PitchMap RealizedHarmony::getIntervals(int rootTpc, bool litera
         break;
     }
 
-    Harmony* next = m_harmony->findNext();
+    Harmony* next = followNext ? m_harmony->findNext() : nullptr;
     if (!literal && next && tpcIsValid(next->rootTpc())) {
         //jazz interpretation
         String qNext = next->parsedForm()->quality();

@@ -804,6 +804,8 @@ class EngravingItem : public apiv1::ScoreElement
     /// Whether to stack modifiers in chord symbols.
     ///\since MuseScore 4.6
     API_PROPERTY_T(bool, harmonyDoNotStackModifiers, HARMONY_DO_NOT_STACK_MODIFIERS)
+    /// Keyboard-voicing inversion for this chord symbol. 0 is root position.
+    API_PROPERTY(harmonyInversion,        HARMONY_INVERSION)
 
     /// For brackets: The bracket type, one of
     /// PluginAPI::PluginAPI::BracketType values.

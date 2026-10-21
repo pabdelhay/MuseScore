@@ -256,7 +256,7 @@ void RealizeChordSymbols::realizeChordSymbols(Transaction&, Score* score, bool l
                 offset = interval.chromatic;
             }
             notes = r.generateNotes(h->rootTpc(), h->bassTpc(),
-                                    literal, voicing, offset);
+                                    literal, voicing, offset, r.inversion());
         }
 
         for (const auto& p : notes) {

@@ -518,6 +518,8 @@ static constexpr PropertyMetaData propertyList[] = {
 
     { Pid::SHARED_PART_ENABLED,                 P_TYPE::BOOL,                      PropertyGroup::NONE,       false, "sharedPartEnabled",               QT_TRANSLATE_NOOP("engraving/propertyName", "shared part enabled") },
 
+    { Pid::HARMONY_INVERSION,                   P_TYPE::INT,                       PropertyGroup::APPEARANCE, true,  "harmonyInversion",                QT_TRANSLATE_NOOP("engraving/propertyName", "chord symbol inversion") },
+
     { Pid::END,                                 P_TYPE::INT,                       PropertyGroup::NONE,       false, "++end++",                         nullptr }
 };
 /* *INDENT-ON* */
