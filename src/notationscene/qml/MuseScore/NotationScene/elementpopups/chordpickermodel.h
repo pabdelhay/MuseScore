@@ -149,6 +149,10 @@ private:
     int rightHandCount() const;
     void playPreview();
     bool commitSymbol();
+    void storePlaybackVoicing();
+    void storePlaybackVoicingIfCurrent();
+    bool previewMatchesItem() const;
+    void syncVoicingFromItem();
 
     static ChordPickerModel* s_active;
 
@@ -171,6 +175,7 @@ private:
     bool m_literal = true;
     bool m_expanded = true;
     int m_inversion = 0;
+    bool m_usingStoredVoicing = false;
     int m_pianoLow = 48;
     int m_pianoHigh = 84;
 };

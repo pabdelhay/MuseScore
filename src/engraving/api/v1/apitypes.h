@@ -711,6 +711,7 @@ enum class HarmonyVoicing {
     SIX_NOTE   = int(mu::engraving::Voicing::SIX_NOTE),
     FOUR_NOTE  = int(mu::engraving::Voicing::FOUR_NOTE),
     THREE_NOTE = int(mu::engraving::Voicing::THREE_NOTE),
+    KEYBOARD   = int(mu::engraving::Voicing::KEYBOARD),
 };
 Q_ENUM_NS(HarmonyVoicing);
 

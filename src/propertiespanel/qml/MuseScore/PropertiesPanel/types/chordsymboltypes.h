@@ -39,7 +39,8 @@ enum class VoicingType {
     VOICING_DROP_TWO = int(engraving::Voicing::DROP_2),
     VOICING_SIX_NOTE = int(engraving::Voicing::SIX_NOTE),
     VOICING_FOUR_NOTE = int(engraving::Voicing::FOUR_NOTE),
-    VOICING_THREE_NOTE = int(engraving::Voicing::THREE_NOTE)
+    VOICING_THREE_NOTE = int(engraving::Voicing::THREE_NOTE),
+    VOICING_KEYBOARD = int(engraving::Voicing::KEYBOARD)
 };
 Q_ENUM_NS(VoicingType)
 

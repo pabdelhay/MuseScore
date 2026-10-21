@@ -77,7 +77,8 @@ Column {
             { text: qsTrc("propertiespanel", "Drop two"), value: ChordSymbolTypes.VOICING_DROP_TWO },
             { text: qsTrc("propertiespanel", "Six note"), value: ChordSymbolTypes.VOICING_SIX_NOTE },
             { text: qsTrc("propertiespanel", "Four note"), value: ChordSymbolTypes.VOICING_FOUR_NOTE },
-            { text: qsTrc("propertiespanel", "Three note"), value: ChordSymbolTypes.VOICING_THREE_NOTE }
+            { text: qsTrc("propertiespanel", "Three note"), value: ChordSymbolTypes.VOICING_THREE_NOTE },
+            { text: qsTrc("propertiespanel", "Keyboard"), value: ChordSymbolTypes.VOICING_KEYBOARD }
         ]
     }
 

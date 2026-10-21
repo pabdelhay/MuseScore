@@ -527,6 +527,8 @@ enum class Pid : short {
 
     SHARED_PART_ENABLED,
 
+    HARMONY_INVERSION,
+
     END
 };
 

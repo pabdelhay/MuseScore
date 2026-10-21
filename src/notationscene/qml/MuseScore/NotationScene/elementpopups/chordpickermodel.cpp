@@ -23,7 +23,6 @@
 #include "chordpickermodel.h"
 
 #include <algorithm>
-#include <map>
 
 #include <QHash>
 
@@ -48,7 +47,6 @@ using namespace mu::engraving;
 
 namespace {
 constexpr int PREVIEW_DURATION_US = 650000;
-constexpr int BASS_OCTAVE_PITCH = 48;      // C3
 constexpr int RIGHT_HAND_PITCH = 60;       // C4
 constexpr int DEFAULT_PIANO_LOW = 48;      // C3
 constexpr int SIMPLE_PIANO_SPAN = 36;      // three octaves, C to C
@@ -557,6 +555,7 @@ void ChordPickerModel::setLiteral(bool literal)
     writeBoolSetting("ui/chordPicker/literal", m_literal);
     emit literalChanged();
     refreshRealization();
+    storePlaybackVoicingIfCurrent();
     playPreview();
 }
 
@@ -581,6 +580,7 @@ void ChordPickerModel::cycleInversion()
     writeIntSetting("ui/chordPicker/inversion", m_inversion);
     emit inversionChanged();
     rebuildVoicing();
+    storePlaybackVoicingIfCurrent();
     playPreview();
 }
 
@@ -650,27 +650,117 @@ bool ChordPickerModel::commitSymbol()
     const bool editingThis = notationInteraction
                              && notationInteraction->isTextEditingStarted()
                              && notationInteraction->editedText() == harmony;
+    TextCursor* cursor = editingThis ? harmony->cursor() : nullptr;
+    if (editingThis && !cursor) {
+        return false;
+    }
 
+    beginCommand(muse::TranslatableString("undoableAction", "Set chord symbol"));
     if (editingThis) {
-        TextCursor* cursor = harmony->cursor();
-        if (!cursor) {
-            return false;
-        }
-
         cursor->movePosition(TextCursor::MoveOperation::Start, TextCursor::MoveMode::MoveAnchor);
         cursor->movePosition(TextCursor::MoveOperation::End, TextCursor::MoveMode::KeepAnchor);
-
-        beginCommand(muse::TranslatableString("undoableAction", "Set chord symbol"));
         if (cursor->hasSelection()) {
             harmony->deleteSelectedText();
         }
         harmony->insertText(chordText);
-        endCommand();
-        return true;
+    } else {
+        harmony->undoChangeProperty(Pid::TEXT, PropertyValue(chordText), harmony->propertyFlags(Pid::TEXT));
+    }
+    storePlaybackVoicing();
+    endCommand();
+    if (!editingThis) {
+        updateNotation();
+    }
+    return true;
+}
+
+void ChordPickerModel::storePlaybackVoicing()
+{
+    Harmony* harmony = harmonyItem();
+    if (!harmony) {
+        return;
     }
 
-    changeItemProperty(Pid::TEXT, chordText);
-    return true;
+    const auto unstyled = [harmony](Pid id) {
+        PropertyFlags flags = harmony->propertyFlags(id);
+        if (flags == PropertyFlags::STYLED) {
+            flags = PropertyFlags::UNSTYLED;
+        }
+        return flags;
+    };
+
+    harmony->undoChangeProperty(Pid::HARMONY_VOICE_LITERAL, PropertyValue(m_literal), unstyled(Pid::HARMONY_VOICE_LITERAL));
+    harmony->undoChangeProperty(Pid::HARMONY_VOICING, PropertyValue(int(Voicing::KEYBOARD)), unstyled(Pid::HARMONY_VOICING));
+    harmony->undoChangeProperty(Pid::HARMONY_INVERSION, PropertyValue(inversion()), PropertyFlags::NOSTYLE);
+}
+
+void ChordPickerModel::storePlaybackVoicingIfCurrent()
+{
+    if (!previewMatchesItem()) {
+        return;
+    }
+
+    beginCommand(muse::TranslatableString("undoableAction", "Set chord symbol voicing"));
+    storePlaybackVoicing();
+    endCommand();
+    updateNotation();
+}
+
+bool ChordPickerModel::previewMatchesItem() const
+{
+    const Harmony* harmony = harmonyItem();
+    if (!harmony) {
+        return false;
+    }
+    const QString symbol = preview();
+    if (symbol.isEmpty()) {
+        return false;
+    }
+
+    const auto same = [&symbol](QString text) {
+        text = normalizeAccidentals(text);
+        if (text.startsWith(u'(') && text.endsWith(u')') && text.size() > 2) {
+            text = text.mid(1, text.size() - 2).trimmed();
+        }
+        return text == symbol;
+    };
+    return same(harmony->plainText().toQString()) || same(harmony->harmonyName().toQString());
+}
+
+void ChordPickerModel::syncVoicingFromItem()
+{
+    Harmony* harmony = harmonyItem();
+    const bool stored = harmony && harmony->realizedHarmony().voicing() == Voicing::KEYBOARD;
+    if (stored) {
+        const int storedInversion = std::max(0, harmony->realizedHarmony().inversion());
+        const bool storedLiteral = harmony->realizedHarmony().literal();
+        if (m_inversion != storedInversion) {
+            m_inversion = storedInversion;
+            emit inversionChanged();
+        }
+        if (m_literal != storedLiteral) {
+            m_literal = storedLiteral;
+            emit literalChanged();
+        }
+        m_usingStoredVoicing = true;
+        return;
+    }
+
+    if (!m_usingStoredVoicing) {
+        return;
+    }
+
+    m_usingStoredVoicing = false;
+    const int preferredInversion = std::max(0, muse::settings()->value(settingsKey("ui/chordPicker/inversion")).toInt());
+    const bool preferredLiteral = muse::settings()->value(settingsKey("ui/chordPicker/literal")).toBool();
+    if (m_inversion != preferredInversion) {
+        m_inversion = preferredInversion;
+        emit inversionChanged();
+    }
+    if (m_literal != preferredLiteral) {
+        m_literal = preferredLiteral;
+        emit literalChanged();
+    }
 }
 
 void ChordPickerModel::apply()
@@ -724,6 +814,7 @@ void ChordPickerModel::readFromItem()
         }
     }
 
+    syncVoicingFromItem();
     assignSelection(root, quality, bass, custom);
     refreshRealization();
 }
@@ -942,26 +1033,11 @@ void ChordPickerModel::refreshRealization()
         if (probe->isRealizable() && probe->parsedForm()) {
             const int rootTpc = probe->rootTpc();
             const int bassTpc = probe->bassTpc();
-            const RealizedHarmony::PitchMap pitches = probe->getRealizedHarmony().generateNotes(
-                rootTpc, bassTpc, m_literal, Voicing::CLOSE, 0);
-
-            std::map<int, int> pitchClassToTpc;
-            for (const auto& pitch : pitches) {
-                if (pitch.first < RIGHT_HAND_PITCH) {
-                    continue;
-                }
-                const int pitchClass = normalizePitchClass(pitch.first);
-                if (pitchClassToTpc.find(pitchClass) == pitchClassToTpc.end() && tpcIsValid(pitch.second)) {
-                    pitchClassToTpc.emplace(pitchClass, pitch.second);
-                }
-            }
+            const std::vector<RealizedHarmony::KeyboardTone> tones = probe->realizedHarmony().keyboardTones(rootTpc, m_literal);
 
             if (tpcIsValid(rootTpc)) {
                 m_rootTpc = rootTpc;
                 m_rootPc = normalizePitchClass(tpc2pitch(rootTpc));
-                if (pitchClassToTpc.find(m_rootPc) == pitchClassToTpc.end()) {
-                    pitchClassToTpc.emplace(m_rootPc, rootTpc);
-                }
             }
 
             if (tpcIsValid(bassTpc)) {
@@ -972,17 +1048,14 @@ void ChordPickerModel::refreshRealization()
                 m_bassPc = m_rootPc;
             }
 
-            m_tones.reserve(pitchClassToTpc.size());
-            for (const auto& pitchClass : pitchClassToTpc) {
-                ChordTone tone;
-                tone.pc = pitchClass.first;
-                tone.tpc = pitchClass.second;
-                tone.interval = normalizePitchClass(tone.pc - m_rootPc);
-                m_tones.push_back(tone);
+            m_tones.reserve(tones.size());
+            for (const RealizedHarmony::KeyboardTone& tone : tones) {
+                ChordTone chordTone;
+                chordTone.pc = tone.pitchClass;
+                chordTone.tpc = tone.tpc;
+                chordTone.interval = tone.interval;
+                m_tones.push_back(chordTone);
             }
-            std::sort(m_tones.begin(), m_tones.end(), [](const ChordTone& a, const ChordTone& b) {
-                return a.interval < b.interval;
-            });
         }
         probe->setOwnershipParent(nullptr);
         delete probe;
@@ -1042,44 +1115,25 @@ void ChordPickerModel::rebuildVoicing()
         return tpc2name(tpc, NoteSpellingType::STANDARD, NoteCaseType::CAPITAL).toQString();
     };
 
-    std::vector<ChordTone> rightHand = m_tones;
-
-    const int count = int(rightHand.size());
-    int previousPitch = -1;
-    if (count > 0) {
-        const int inversion = (m_inversion % count + count) % count;
-        for (int i = 0; i < count; ++i) {
-            const ChordTone& tone = rightHand[(inversion + i) % count];
-            int pitch = 0;
-            if (previousPitch < 0) {
-                pitch = RIGHT_HAND_PITCH + tone.pc;
-            } else {
-                int delta = normalizePitchClass(tone.pc - previousPitch);
-                if (delta == 0) {
-                    delta = 12;
-                }
-                pitch = previousPitch + delta;
-            }
-            previousPitch = pitch;
-
-            int tpc = tone.tpc;
-            if (!tpcIsValid(tpc)) {
-                tpc = pitch2tpc(pitch, Key::C, m_preferSharps ? Prefer::SHARPS : Prefer::FLATS);
-            }
-            m_sounding.push_back(SoundingNote { pitch, tpc, false, spell(pitch, tpc) });
-        }
+    std::vector<RealizedHarmony::KeyboardTone> rightHand;
+    rightHand.reserve(m_tones.size());
+    for (const ChordTone& tone : m_tones) {
+        rightHand.push_back(RealizedHarmony::KeyboardTone { tone.pc, tone.tpc, tone.interval });
     }
 
-    if (tpcIsValid(m_bassTpc) || !m_tones.empty()) {
-        int bassPitch = BASS_OCTAVE_PITCH + normalizePitchClass(m_bassPc);
-        if (!m_sounding.empty() && bassPitch >= m_sounding.front().pitch - 2) {
-            bassPitch -= 12;
+    const bool addBass = tpcIsValid(m_bassTpc) || !rightHand.empty();
+    const int bassPitchClass = tpcIsValid(m_bassTpc) ? m_bassPc : m_rootPc;
+    const int bassTpc = addBass ? (tpcIsValid(m_bassTpc) ? m_bassTpc : m_rootTpc) : Tpc::TPC_INVALID;
+    const RealizedHarmony::PitchMap pitches = RealizedHarmony::voiceKeyboard(rightHand, bassPitchClass, bassTpc, inversion(), 0);
+
+    bool first = true;
+    for (const auto& pitch : pitches) {
+        int tpc = pitch.second;
+        if (!tpcIsValid(tpc)) {
+            tpc = pitch2tpc(pitch.first, Key::C, m_preferSharps ? Prefer::SHARPS : Prefer::FLATS);
         }
-        int bassTpc = m_bassTpc;
-        if (!tpcIsValid(bassTpc)) {
-            bassTpc = pitch2tpc(bassPitch, Key::C, m_preferSharps ? Prefer::SHARPS : Prefer::FLATS);
-        }
-        m_sounding.insert(m_sounding.begin(), SoundingNote { bassPitch, bassTpc, true, spell(bassPitch, bassTpc) });
+        m_sounding.push_back(SoundingNote { pitch.first, tpc, first && addBass, spell(pitch.first, tpc) });
+        first = false;
     }
 
     const int span = m_advanced ? ADVANCED_PIANO_SPAN : SIMPLE_PIANO_SPAN;

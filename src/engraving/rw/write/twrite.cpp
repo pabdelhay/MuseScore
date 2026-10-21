@@ -1887,6 +1887,7 @@ void TWrite::write(const Harmony* item, XmlWriter& xml, WriteContext& ctx)
     }
 
     writeProperty(item, xml, Pid::HARMONY_DO_NOT_STACK_MODIFIERS);
+    writeProperty(item, xml, Pid::HARMONY_INVERSION);
     writeProperty(item, xml, Pid::EXCLUDE_VERTICAL_ALIGN);
     writeProperties(toTextBase(item), xml, ctx, false);
     //Pid::HARMONY_VOICE_LITERAL, Pid::HARMONY_VOICING, Pid::HARMONY_DURATION

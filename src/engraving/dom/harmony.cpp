@@ -1528,6 +1528,8 @@ PropertyValue Harmony::getProperty(Pid pid) const
         return int(m_realizedHarmony.voicing());
     case Pid::HARMONY_DURATION:
         return int(m_realizedHarmony.duration());
+    case Pid::HARMONY_INVERSION:
+        return m_realizedHarmony.inversion();
     case Pid::HARMONY_DO_NOT_STACK_MODIFIERS:
         return m_doNotStackModifiers;
     case Pid::FONT_SIZE:
@@ -1565,6 +1567,9 @@ bool Harmony::setProperty(Pid pid, const PropertyValue& v)
         break;
     case Pid::HARMONY_DURATION:
         m_realizedHarmony.setDuration(HDuration(v.toInt()));
+        break;
+    case Pid::HARMONY_INVERSION:
+        m_realizedHarmony.setInversion(v.toInt());
         break;
     case Pid::EXCLUDE_VERTICAL_ALIGN: {
         setExcludeVerticalAlign(v.toBool());
@@ -1627,6 +1632,9 @@ PropertyValue Harmony::propertyDefault(Pid id) const
         return false;
     case Pid::PLAY:
         v = true;
+        break;
+    case Pid::HARMONY_INVERSION:
+        v = 0;
         break;
     // fall-through
     default:

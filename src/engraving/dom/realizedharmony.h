@@ -23,6 +23,7 @@
 #pragma once
 
 #include <map>
+#include <vector>
 
 #include "../types/fraction.h"
 
@@ -38,7 +39,10 @@ enum class Voicing : signed char {
     DROP_2,
     SIX_NOTE,
     FOUR_NOTE,
-    THREE_NOTE
+    THREE_NOTE,
+    // Close right-hand voicing with a bass note below, matching the chord picker.
+    // Honors RealizedHarmony::inversion().
+    KEYBOARD
 };
 
 //duration to realize notes for
@@ -66,28 +70,47 @@ public:
     RealizedHarmony(Harmony* h)
         : m_harmony(h), m_notes(PitchMap()), m_dirty(1) {}
 
+    // One chord tone, ordered by interval from the root when several are voiced together.
+    struct KeyboardTone {
+        int pitchClass = 0;
+        int tpc = 0;
+        int interval = 0;
+    };
+
     void setVoicing(Voicing);
     void setDuration(HDuration);
     void setLiteral(bool);
+    void setInversion(int inversion);
     void setDirty(bool dirty) { cascadeDirty(dirty); }   //set dirty flag and cascade
     void setHarmony(Harmony* h) { m_harmony = h; }
 
     Voicing voicing() const { return m_voicing; }
     HDuration duration() const { return m_duration; }
     bool literal() const { return m_literal; }
+    int inversion() const { return m_inversion; }
     Harmony* harmony() { return m_harmony; }
+
+    // Pitch classes the chord picker shows, without the bass note and without
+    // jazz approach tones taken from the following chord.
+    std::vector<KeyboardTone> keyboardTones(int rootTpc, bool literal) const;
+
+    // The voicing the chord picker previews: chord tones stacked in close
+    // position from C4, rotated by inversion, with the bass around C3.
+    static PitchMap voiceKeyboard(const std::vector<KeyboardTone>& tones, int bassPitchClass, int bassTpc,
+                                  int inversion, int transposeOffset);
 
     bool valid() const { return !m_dirty && m_harmony; }
 
     const PitchMap& notes() const;
-    const PitchMap generateNotes(int rootTpc, int bassTpc, bool literal, Voicing voicing, int transposeOffset) const;
+    const PitchMap generateNotes(int rootTpc, int bassTpc, bool literal, Voicing voicing, int transposeOffset,
+                                 int inversion = 0) const;
 
     void update(int rootTpc, int bassTpc, int transposeOffset = 0);   //updates the notes map
 
     Fraction getActualDuration(int utick, HDuration durationType = HDuration::INVALID) const;
 
 private:
-    PitchMap getIntervals(int rootTpc, bool literal = true) const;
+    PitchMap getIntervals(int rootTpc, bool literal = true, bool followNext = true) const;
     PitchMap normalizeNoteMap(const PitchMap& intervals, int rootTpc, int rootPitch, size_t max = 128, bool enforceMaxAsGoal = false) const;
     void cascadeDirty(bool dirty);
 
@@ -97,6 +120,7 @@ private:
 
     Voicing m_voicing = Voicing::AUTO;
     HDuration m_duration = HDuration::INVALID;
+    int m_inversion = 0;
 
     //whether or not the current notes QMap is up to date
     bool m_dirty = false;
