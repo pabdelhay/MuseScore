@@ -96,14 +96,13 @@ public:
 
     // The voicing the chord picker previews: chord tones stacked in close
     // position from C4, rotated by inversion, with the bass around C3.
-    static PitchMap voiceKeyboard(const std::vector<KeyboardTone>& tones, int bassPitchClass, int bassTpc,
-                                  int inversion, int transposeOffset);
+    static PitchMap voiceKeyboard(const std::vector<KeyboardTone>& tones, int bassPitchClass, int bassTpc, int inversion,
+                                  int transposeOffset);
 
     bool valid() const { return !m_dirty && m_harmony; }
 
     const PitchMap& notes() const;
-    const PitchMap generateNotes(int rootTpc, int bassTpc, bool literal, Voicing voicing, int transposeOffset,
-                                 int inversion = 0) const;
+    const PitchMap generateNotes(int rootTpc, int bassTpc, bool literal, Voicing voicing, int transposeOffset, int inversion = 0) const;
 
     void update(int rootTpc, int bassTpc, int transposeOffset = 0);   //updates the notes map
 

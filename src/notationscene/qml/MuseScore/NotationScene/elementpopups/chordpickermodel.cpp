@@ -151,13 +151,20 @@ int pitchClassForRoot(const QString& name)
 
     int pc = -1;
     switch (name.at(0).toUpper().unicode()) {
-    case u'C': pc = 0; break;
-    case u'D': pc = 2; break;
-    case u'E': pc = 4; break;
-    case u'F': pc = 5; break;
-    case u'G': pc = 7; break;
-    case u'A': pc = 9; break;
-    case u'B': pc = 11; break;
+    case u'C': pc = 0;
+        break;
+    case u'D': pc = 2;
+        break;
+    case u'E': pc = 4;
+        break;
+    case u'F': pc = 5;
+        break;
+    case u'G': pc = 7;
+        break;
+    case u'A': pc = 9;
+        break;
+    case u'B': pc = 11;
+        break;
     default: return -1;
     }
 
